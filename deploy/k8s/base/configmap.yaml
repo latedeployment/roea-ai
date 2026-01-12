@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: roea-config
+  namespace: roea
+data:
+  roea.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 8080
+
+    fossil:
+      path: "/data/roea.fossil"
+      auto_sync: false
+
+    crypto:
+      identity_path: "/secrets/age/roea.key"
+
+    executors:
+      local:
+        enabled: false
+      k8s:
+        enabled: true
+        namespace: "roea-agents"
+        image: "ghcr.io/roea-ai/agent-runtime:latest"
+      vm:
+        enabled: false
+
+    git:
+      default_remote: "origin"
+      branch_prefix: "roea/"
+      auto_push: true
+
+    mcp:
+      enabled: true
+
+    models:
+      default: "claude-sonnet-4-20250514"

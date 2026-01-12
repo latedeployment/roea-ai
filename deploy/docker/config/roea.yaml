@@ -1,0 +1,32 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+fossil:
+  path: "/data/roea.fossil"
+  auto_sync: false
+
+crypto:
+  identity_path: "/config/roea.key"
+
+executors:
+  local:
+    enabled: true
+    max_concurrent: 4
+    worktree_base: "/data/worktrees"
+  k8s:
+    enabled: false
+    namespace: "roea-agents"
+  vm:
+    enabled: false
+
+git:
+  default_remote: "origin"
+  branch_prefix: "roea/"
+  auto_push: true
+
+mcp:
+  enabled: true
+
+models:
+  default: "claude-sonnet-4-20250514"

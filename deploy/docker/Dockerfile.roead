@@ -1,0 +1,45 @@
+# Build stage
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache git gcc musl-dev sqlite-dev fossil
+
+WORKDIR /app
+
+# Copy go mod files first for caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build the binary
+RUN CGO_ENABLED=1 GOOS=linux go build -o roead ./cmd/roead
+
+# Runtime stage
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates fossil sqlite-libs
+
+# Create non-root user
+RUN adduser -D -g '' roea
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/roead .
+
+# Create directories
+RUN mkdir -p /data /config && chown -R roea:roea /data /config
+
+USER roea
+
+# Volumes for persistent data
+VOLUME ["/data", "/config"]
+
+# Environment variables
+ENV ROEA_CONFIG=/config/roea.yaml
+ENV ROEA_DATA=/data
+
+EXPOSE 8080
+
+ENTRYPOINT ["./roead"]
+CMD ["--config", "/config/roea.yaml"]

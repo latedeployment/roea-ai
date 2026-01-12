@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  roea:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.roead
+    container_name: roea-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - roea-data:/data
+      - roea-config:/config
+      - ./config/roea.yaml:/config/roea.yaml:ro
+    environment:
+      - ROEA_CONFIG=/config/roea.yaml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    build:
+      context: ../../web
+      dockerfile: ../deploy/docker/Dockerfile.web
+    container_name: roea-web
+    ports:
+      - "3000:3000"
+    environment:
+      - ROEA_API_URL=http://roea:8080
+    depends_on:
+      - roea
+    restart: unless-stopped
+
+  # Example agent worker
+  agent-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.agent-runtime
+    container_name: roea-agent-1
+    environment:
+      - ROEA_API=http://roea:8080
+      - AGENT_TYPE=general-coder
+    depends_on:
+      - roea
+    volumes:
+      - agent-workspace:/workspace
+    restart: unless-stopped
+    profiles:
+      - agents
+
+volumes:
+  roea-data:
+  roea-config:
+  agent-workspace:
+
+networks:
+  default:
+    name: roea-network
