@@ -68,6 +68,15 @@ type activeExecution struct {
 	Cancel     context.CancelFunc
 }
 
+type executionSetup struct {
+	instanceID string
+	taskID     string
+	executor   Executor
+	execCtx    context.Context
+	cancel     context.CancelFunc
+	req        *ExecutionRequest
+}
+
 // NewEngine creates a new execution Engine.
 func NewEngine(taskManager *task.Manager, agentPool *agent.Pool) *Engine {
 	return &Engine{
@@ -78,15 +87,15 @@ func NewEngine(taskManager *task.Manager, agentPool *agent.Pool) *Engine {
 	}
 }
 
-// RegisterExecutor adds an executor backend.
-func (e *Engine) RegisterExecutor(executor Executor) {
-	e.executorsMu.Lock()
-	defer e.executorsMu.Unlock()
-	e.executors = append(e.executors, executor)
+func (e *Engine) newInstanceID(taskID string) string {
+	prefix := taskID
+	if len(prefix) > 8 {
+		prefix = prefix[:8]
+	}
+	return fmt.Sprintf("%s-%s", prefix, generateShortID())
 }
 
-// Execute starts execution of a task.
-func (e *Engine) Execute(ctx context.Context, taskID string) (*ExecutionResult, error) {
+func (e *Engine) setupExecution(ctx context.Context, taskID string, instanceID string) (*executionSetup, error) {
 	// Get the task
 	taskObj, secrets, err := e.taskManager.GetTaskWithSecrets(taskID)
 	if err != nil {
@@ -107,9 +116,6 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (*ExecutionResult, 
 	if executor == nil {
 		return nil, fmt.Errorf("no executor available for task")
 	}
-
-	// Generate instance ID
-	instanceID := fmt.Sprintf("%s-%s", taskID[:8], generateShortID())
 
 	// Create execution context with cancellation
 	execCtx, cancel := context.WithCancel(ctx)
@@ -135,6 +141,12 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (*ExecutionResult, 
 
 	// Mark task as running
 	if err := e.taskManager.AssignTask(taskID, instanceID); err != nil {
+		// Roll back registration so Stop()/tracking doesn't retain a broken entry.
+		e.activeExecsMu.Lock()
+		delete(e.activeExecs, instanceID)
+		e.activeExecsMu.Unlock()
+		e.agentPool.UnregisterInstance(instanceID)
+		cancel()
 		return nil, fmt.Errorf("failed to assign task: %w", err)
 	}
 
@@ -147,61 +159,74 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (*ExecutionResult, 
 		InstanceID: instanceID,
 	}
 
-	// Execute
-	result, err := executor.Execute(execCtx, req)
+	return &executionSetup{
+		instanceID: instanceID,
+		taskID:     taskID,
+		executor:   executor,
+		execCtx:    execCtx,
+		cancel:     cancel,
+		req:        req,
+	}, nil
+}
 
-	// Cleanup
-	e.activeExecsMu.Lock()
-	delete(e.activeExecs, instanceID)
-	e.activeExecsMu.Unlock()
+func (e *Engine) runExecution(setup *executionSetup) (*ExecutionResult, error) {
+	// Always cleanup registrations.
+	defer func() {
+		e.activeExecsMu.Lock()
+		delete(e.activeExecs, setup.instanceID)
+		e.activeExecsMu.Unlock()
+		e.agentPool.UnregisterInstance(setup.instanceID)
+		setup.cancel()
+	}()
 
-	e.agentPool.UnregisterInstance(instanceID)
-
+	result, err := setup.executor.Execute(setup.execCtx, setup.req)
 	if err != nil {
-		e.taskManager.FailTask(taskID, err.Error())
+		_ = e.taskManager.FailTask(setup.taskID, err.Error())
 		return nil, err
 	}
 
 	// Update task status based on result
 	if result.Success {
-		e.taskManager.CompleteTask(taskID, result.Output, nil)
+		_ = e.taskManager.CompleteTask(setup.taskID, result.Output, nil)
 	} else {
-		e.taskManager.FailTask(taskID, result.ErrorMessage)
+		_ = e.taskManager.FailTask(setup.taskID, result.ErrorMessage)
 	}
 
 	return result, nil
 }
 
+// RegisterExecutor adds an executor backend.
+func (e *Engine) RegisterExecutor(executor Executor) {
+	e.executorsMu.Lock()
+	defer e.executorsMu.Unlock()
+	e.executors = append(e.executors, executor)
+}
+
+// Execute starts execution of a task.
+func (e *Engine) Execute(ctx context.Context, taskID string) (*ExecutionResult, error) {
+	instanceID := e.newInstanceID(taskID)
+
+	setup, err := e.setupExecution(ctx, taskID, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	return e.runExecution(setup)
+}
+
 // ExecuteAsync starts execution in the background.
 func (e *Engine) ExecuteAsync(taskID string) (string, error) {
-	// Get the task
-	taskObj, _, err := e.taskManager.GetTaskWithSecrets(taskID)
+	instanceID := e.newInstanceID(taskID)
+
+	// Do setup synchronously so the returned instanceID is immediately trackable/stoppable.
+	setup, err := e.setupExecution(context.Background(), taskID, instanceID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get task: %w", err)
-	}
-	if taskObj == nil {
-		return "", fmt.Errorf("task not found: %s", taskID)
+		return "", err
 	}
 
-	// Get the agent definition
-	agentDef, err := e.agentPool.GetAgentDefinition(taskObj.AgentType)
-	if err != nil {
-		return "", fmt.Errorf("failed to get agent definition: %w", err)
-	}
-
-	// Find an appropriate executor
-	executor := e.findExecutor(taskObj, agentDef)
-	if executor == nil {
-		return "", fmt.Errorf("no executor available for task")
-	}
-
-	// Generate instance ID
-	instanceID := fmt.Sprintf("%s-%s", taskID[:8], generateShortID())
-
-	// Start background execution
 	go func() {
-		ctx := context.Background()
-		e.Execute(ctx, taskID)
+		// Best-effort: the caller can inspect task status/logs for failures.
+		_, _ = e.runExecution(setup)
 	}()
 
 	return instanceID, nil

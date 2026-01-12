@@ -101,10 +101,9 @@ func (m *Manager) CompleteTask(taskID string, result string, artifactPaths []str
 	status := types.TaskCompleted
 
 	// Store any artifacts
-	for _, path := range artifactPaths {
-		// In a real implementation, we'd read the file and store it
-		// For now, store the path as a reference
-	}
+	// In a real implementation, we'd read each file and store it. For now, we
+	// accept the list but do not persist it anywhere.
+	_ = artifactPaths
 
 	return m.ticketStore.UpdateTask(taskID, &types.TaskUpdate{
 		Status:      &status,
