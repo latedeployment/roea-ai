@@ -1,0 +1,50 @@
+# Agent Runtime Container
+# Provides an environment for running AI coding agents
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    nodejs \
+    npm \
+    python3 \
+    python3-pip \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install age for encryption
+RUN wget -O /tmp/age.tar.gz https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz \
+    && tar -xzf /tmp/age.tar.gz -C /tmp \
+    && mv /tmp/age/age /usr/local/bin/ \
+    && mv /tmp/age/age-keygen /usr/local/bin/ \
+    && rm -rf /tmp/age*
+
+# Install Claude Code (placeholder - actual installation depends on availability)
+# RUN npm install -g @anthropic-ai/claude-code
+
+# Create agent user
+RUN useradd -m -s /bin/bash agent
+
+# Create directories
+RUN mkdir -p /workspace /config && chown -R agent:agent /workspace /config
+
+# Copy the ralph-wiggum script
+COPY scripts/ralph-wiggum.sh /usr/local/bin/ralph-wiggum.sh
+RUN chmod +x /usr/local/bin/ralph-wiggum.sh
+
+USER agent
+WORKDIR /workspace
+
+# Environment
+ENV ROEA_API=http://roea:8080
+ENV AGENT_TYPE=general-coder
+
+# Default command runs the task loop
+CMD ["/usr/local/bin/ralph-wiggum.sh"]

@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: roead
+  namespace: roea
+  labels:
+    app.kubernetes.io/name: roead
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: roead
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: roead
+        app.kubernetes.io/component: server
+    spec:
+      containers:
+        - name: roead
+          image: ghcr.io/roea-ai/roead:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: ROEA_CONFIG
+              value: /config/roea.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: identity
+              mountPath: /secrets/age
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: roea-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: roea-data
+        - name: identity
+          secret:
+            secretName: roea-identity
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: roead
+  namespace: roea
+  labels:
+    app.kubernetes.io/name: roead
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: roead
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: roea-data
+  namespace: roea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
