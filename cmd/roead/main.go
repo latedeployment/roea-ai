@@ -19,6 +19,7 @@ import (
 	"github.com/roea-ai/roea/internal/core/agent"
 	"github.com/roea-ai/roea/internal/core/execution"
 	"github.com/roea-ai/roea/internal/core/git"
+	"github.com/roea-ai/roea/internal/core/process"
 	"github.com/roea-ai/roea/internal/core/task"
 	"github.com/roea-ai/roea/internal/crypto"
 	localexec "github.com/roea-ai/roea/internal/executor/local"
@@ -131,6 +132,19 @@ func run(config *types.Config) error {
 		return fmt.Errorf("failed to initialize artifact store: %w", err)
 	}
 
+	// Initialize process event store
+	processEventStore := fossil.NewProcessEventStore(store)
+	if err := processEventStore.InitSchema(); err != nil {
+		return fmt.Errorf("failed to initialize process event store: %w", err)
+	}
+	log.Println("Process event store initialized")
+
+	// Initialize process tracker
+	processTracker := process.NewTracker(processEventStore)
+	processTracker.Start()
+	defer processTracker.Stop()
+	log.Println("Process tracker started")
+
 	// Initialize core components
 	taskManager := task.NewManager(ticketStore, artifactStore, payloadService)
 	agentPool := agent.NewPool(wikiStore)
@@ -142,7 +156,7 @@ func run(config *types.Config) error {
 
 	// Register executors
 	if config.Executors.Local.Enabled {
-		localExecutor := localexec.NewExecutor(&config.Executors.Local)
+		localExecutor := localexec.NewExecutorWithTracker(&config.Executors.Local, processTracker)
 		executionEngine.RegisterExecutor(localExecutor)
 		log.Printf("Local executor enabled (max concurrent: %d)", config.Executors.Local.MaxConcurrent)
 	}
@@ -151,7 +165,7 @@ func run(config *types.Config) error {
 	mcpServer := mcp.NewServer(taskManager, artifactStore, payloadService)
 
 	// Initialize API router
-	router := api.NewRouter(taskManager, agentPool, executionEngine, gitManager, mcpServer)
+	router := api.NewRouter(taskManager, agentPool, executionEngine, gitManager, mcpServer, processTracker)
 
 	// Create HTTP server
 	addr := fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port)
@@ -171,6 +185,8 @@ func run(config *types.Config) error {
 	// Print startup info
 	log.Printf("Roea AI orchestrator ready!")
 	log.Printf("  API: http://%s/api/v1", addr)
+	log.Printf("  Processes: http://%s/api/v1/processes", addr)
+	log.Printf("  Process Graph: http://%s/api/v1/processes/graph", addr)
 	log.Printf("  MCP: http://%s/api/v1/mcp", addr)
 	log.Printf("  WebSocket: ws://%s/ws", addr)
 	log.Printf("  Default model: %s", modelRouter.GetDefaultModel())

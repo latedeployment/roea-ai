@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import { AgentList } from '@/components/agents/AgentList';
 import { ExecutionMonitor } from '@/components/monitor/ExecutionMonitor';
-import { Layout, Bot, Activity, Settings } from 'lucide-react';
+import { ProcessGraph } from '@/components/process/ProcessGraph';
+import { Layout, Bot, Activity, Settings, GitBranch } from 'lucide-react';
 
-type Tab = 'kanban' | 'agents' | 'monitor' | 'settings';
+type Tab = 'kanban' | 'agents' | 'monitor' | 'processes' | 'settings';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('kanban');
@@ -48,6 +49,12 @@ export default function Home() {
                 onClick={() => setActiveTab('monitor')}
               />
               <TabButton
+                icon={<GitBranch className="w-4 h-4" />}
+                label="Processes"
+                active={activeTab === 'processes'}
+                onClick={() => setActiveTab('processes')}
+              />
+              <TabButton
                 icon={<Settings className="w-4 h-4" />}
                 label="Settings"
                 active={activeTab === 'settings'}
@@ -63,6 +70,7 @@ export default function Home() {
         {activeTab === 'kanban' && <KanbanBoard />}
         {activeTab === 'agents' && <AgentList />}
         {activeTab === 'monitor' && <ExecutionMonitor />}
+        {activeTab === 'processes' && <ProcessGraph />}
         {activeTab === 'settings' && <SettingsPanel />}
       </main>
     </div>

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/roea-ai/roea/internal/core/execution"
+	"github.com/roea-ai/roea/internal/core/process"
 	"github.com/roea-ai/roea/pkg/types"
 )
 
@@ -26,6 +27,9 @@ type Executor struct {
 
 	// Semaphore for max concurrent
 	semaphore chan struct{}
+
+	// Process tracker for monitoring
+	processTracker *process.Tracker
 }
 
 // Process represents a running agent process.
@@ -49,6 +53,18 @@ func NewExecutor(config *types.LocalExecutorConfig) *Executor {
 		processes: make(map[string]*Process),
 		semaphore: make(chan struct{}, config.MaxConcurrent),
 	}
+}
+
+// NewExecutorWithTracker creates a new local Executor with process tracking.
+func NewExecutorWithTracker(config *types.LocalExecutorConfig, tracker *process.Tracker) *Executor {
+	exec := NewExecutor(config)
+	exec.processTracker = tracker
+	return exec
+}
+
+// SetProcessTracker sets the process tracker for the executor.
+func (e *Executor) SetProcessTracker(tracker *process.Tracker) {
+	e.processTracker = tracker
 }
 
 // Name returns the executor name.
@@ -139,8 +155,60 @@ func (e *Executor) Execute(ctx context.Context, req *execution.ExecutionRequest)
 		}, nil
 	}
 
+	// Register with process tracker if available
+	var processNodeID string
+	if e.processTracker != nil && cmd.Process != nil {
+		processNode := &types.ProcessNode{
+			PID:         cmd.Process.Pid,
+			TaskID:      req.Task.ID,
+			InstanceID:  req.InstanceID,
+			AgentType:   req.Agent.ID,
+			Command:     cmd.Path,
+			Args:        cmd.Args[1:],
+			Status:      types.ProcessRunning,
+			StartedAt:   proc.StartedAt,
+			WorkingDir:  cmd.Dir,
+			IsAgentRoot: true,
+		}
+		if err := e.processTracker.RegisterProcess(processNode); err == nil {
+			processNodeID = processNode.ID
+		}
+
+		// Start child process discovery in background
+		go func(pid int, taskID, instanceID, agentType string) {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-cmdCtx.Done():
+					return
+				case <-ticker.C:
+					e.processTracker.DiscoverChildProcesses(pid, taskID, instanceID, agentType)
+				}
+			}
+		}(cmd.Process.Pid, req.Task.ID, req.InstanceID, req.Agent.ID)
+	}
+
 	// Wait for completion
 	err := cmd.Wait()
+
+	// Update process tracker with result
+	if e.processTracker != nil && processNodeID != "" {
+		var exitCode *int
+		var status types.ProcessStatus
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+				exitCode = &code
+			}
+			status = types.ProcessFailed
+		} else {
+			zero := 0
+			exitCode = &zero
+			status = types.ProcessCompleted
+		}
+		e.processTracker.UpdateProcessStatus(processNodeID, status, exitCode)
+	}
 
 	result := &execution.ExecutionResult{
 		InstanceID: req.InstanceID,

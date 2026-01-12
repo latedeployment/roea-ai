@@ -2,7 +2,10 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -11,8 +14,10 @@ import (
 	"github.com/roea-ai/roea/internal/core/agent"
 	"github.com/roea-ai/roea/internal/core/execution"
 	"github.com/roea-ai/roea/internal/core/git"
+	"github.com/roea-ai/roea/internal/core/process"
 	"github.com/roea-ai/roea/internal/core/task"
 	"github.com/roea-ai/roea/internal/mcp"
+	"github.com/roea-ai/roea/pkg/types"
 )
 
 // Router holds all API dependencies and routes.
@@ -23,9 +28,14 @@ type Router struct {
 	executionEngine *execution.Engine
 	gitManager      *git.Manager
 	mcpServer       *mcp.Server
+	processTracker  *process.Tracker
 
 	// WebSocket upgrader
 	upgrader websocket.Upgrader
+
+	// WebSocket clients
+	wsClientsMu sync.RWMutex
+	wsClients   map[*websocket.Conn]bool
 }
 
 // NewRouter creates a new API router.
@@ -35,6 +45,7 @@ func NewRouter(
 	executionEngine *execution.Engine,
 	gitManager *git.Manager,
 	mcpServer *mcp.Server,
+	processTracker *process.Tracker,
 ) *Router {
 	r := &Router{
 		engine:          gin.Default(),
@@ -43,14 +54,22 @@ func NewRouter(
 		executionEngine: executionEngine,
 		gitManager:      gitManager,
 		mcpServer:       mcpServer,
+		processTracker:  processTracker,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Allow all origins for development
 			},
 		},
+		wsClients: make(map[*websocket.Conn]bool),
 	}
 
 	r.setupRoutes()
+
+	// Start broadcasting process events if tracker is available
+	if processTracker != nil {
+		go r.broadcastProcessEvents()
+	}
+
 	return r
 }
 
@@ -103,6 +122,20 @@ func (r *Router) setupRoutes() {
 
 		// MCP
 		v1.Any("/mcp", r.handleMCP)
+
+		// Processes
+		processes := v1.Group("/processes")
+		{
+			processes.GET("", r.listProcesses)
+			processes.GET("/active", r.getActiveProcesses)
+			processes.GET("/graph", r.getProcessGraph)
+			processes.GET("/stats", r.getProcessStats)
+			processes.GET("/:id", r.getProcess)
+			processes.GET("/:id/tree", r.getProcessTree)
+			processes.DELETE("/:id", r.terminateProcess)
+			processes.GET("/task/:taskId", r.getProcessesByTask)
+			processes.GET("/instance/:instanceId", r.getProcessesByInstance)
+		}
 	}
 
 	// WebSocket for real-time updates
@@ -236,6 +269,53 @@ func (r *Router) handleMCP(c *gin.Context) {
 	r.mcpServer.ServeHTTP(c.Writer, c.Request)
 }
 
+// Process handlers
+
+func (r *Router) listProcesses(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.ListProcesses(c)
+}
+
+func (r *Router) getProcess(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetProcess(c)
+}
+
+func (r *Router) getProcessTree(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetProcessTree(c)
+}
+
+func (r *Router) getProcessGraph(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetProcessGraph(c)
+}
+
+func (r *Router) getActiveProcesses(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetActiveProcesses(c)
+}
+
+func (r *Router) getProcessesByTask(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetProcessesByTask(c)
+}
+
+func (r *Router) getProcessesByInstance(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetProcessesByInstance(c)
+}
+
+func (r *Router) terminateProcess(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.TerminateProcess(c)
+}
+
+func (r *Router) getProcessStats(c *gin.Context) {
+	h := handlers.NewProcessHandler(r.processTracker)
+	h.GetProcessStats(c)
+}
+
 // WebSocket handler
 
 func (r *Router) handleWebSocket(c *gin.Context) {
@@ -243,14 +323,114 @@ func (r *Router) handleWebSocket(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
 
-	// Handle WebSocket connection for real-time updates
-	// This is a placeholder for real-time task progress streaming
+	// Register client
+	r.wsClientsMu.Lock()
+	r.wsClients[conn] = true
+	r.wsClientsMu.Unlock()
+
+	defer func() {
+		r.wsClientsMu.Lock()
+		delete(r.wsClients, conn)
+		r.wsClientsMu.Unlock()
+		conn.Close()
+	}()
+
+	// Send initial process graph
+	if r.processTracker != nil {
+		graph, err := r.processTracker.GetProcessGraph(nil)
+		if err == nil {
+			msg := types.WebSocketMessage{
+				Type:    "initial_graph",
+				Payload: graph,
+			}
+			data, _ := json.Marshal(msg)
+			conn.WriteMessage(websocket.TextMessage, data)
+		}
+	}
+
+	// Handle incoming messages (e.g., subscribe to specific task)
 	for {
-		_, _, err := conn.ReadMessage()
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}
+
+		// Parse subscription request
+		var req struct {
+			Action string `json:"action"`
+			TaskID string `json:"task_id"`
+		}
+		if err := json.Unmarshal(message, &req); err != nil {
+			continue
+		}
+
+		// Handle subscription
+		switch req.Action {
+		case "subscribe_task":
+			// Send current processes for the task
+			if r.processTracker != nil {
+				processes := r.processTracker.GetProcessesByTask(req.TaskID)
+				msg := types.WebSocketMessage{
+					Type:    "task_processes",
+					Payload: processes,
+				}
+				data, _ := json.Marshal(msg)
+				conn.WriteMessage(websocket.TextMessage, data)
+			}
+		}
+	}
+}
+
+// broadcastProcessEvents broadcasts process events to all WebSocket clients.
+func (r *Router) broadcastProcessEvents() {
+	if r.processTracker == nil {
+		return
+	}
+
+	// Subscribe to process events
+	eventCh := r.processTracker.Subscribe("api_broadcaster")
+	defer r.processTracker.Unsubscribe("api_broadcaster")
+
+	for event := range eventCh {
+		msg := types.WebSocketMessage{
+			Type:    "process_event",
+			Payload: event,
+		}
+		data, err := json.Marshal(msg)
+		if err != nil {
+			continue
+		}
+
+		// Broadcast to all clients
+		r.wsClientsMu.RLock()
+		for conn := range r.wsClients {
+			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				// Client will be removed when read fails
+				continue
+			}
+		}
+		r.wsClientsMu.RUnlock()
+	}
+}
+
+// BroadcastMessage sends a message to all WebSocket clients.
+func (r *Router) BroadcastMessage(msgType string, payload interface{}) {
+	msg := types.WebSocketMessage{
+		Type:    msgType,
+		Payload: payload,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+
+	r.wsClientsMu.RLock()
+	defer r.wsClientsMu.RUnlock()
+
+	for conn := range r.wsClients {
+		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		conn.WriteMessage(websocket.TextMessage, data)
 	}
 }
