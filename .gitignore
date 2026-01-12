@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+roead
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Next.js
+web/.next/
+web/out/
+
+# TypeScript
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Roea data files (should be per-project)
+*.fossil
+*.key
+.roea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+*.cover
+*.out
+
+# Temporary files
+tmp/
+*.tmp
+*.log
