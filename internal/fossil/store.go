@@ -54,12 +54,18 @@ func (s *Store) Initialize() error {
 	return nil
 }
 
-// createRepo creates a new Fossil repository.
+// createRepo creates a new Fossil repository or SQLite database fallback.
 func (s *Store) createRepo() error {
 	// Ensure directory exists
 	dir := filepath.Dir(s.fossilPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Check if fossil is available
+	if _, err := exec.LookPath("fossil"); err != nil {
+		// Fossil not installed, create SQLite database directly
+		return s.createSQLiteDB()
 	}
 
 	// Create new fossil repo
@@ -71,11 +77,40 @@ func (s *Store) createRepo() error {
 	return nil
 }
 
+// createSQLiteDB creates a SQLite database as a fallback when Fossil is not available.
+func (s *Store) createSQLiteDB() error {
+	db, err := sql.Open("sqlite3", s.fossilPath)
+	if err != nil {
+		return fmt.Errorf("failed to create database: %w", err)
+	}
+	defer db.Close()
+
+	// Create minimal schema for POC
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS config (
+			name TEXT PRIMARY KEY,
+			value TEXT
+		);
+		INSERT OR IGNORE INTO config (name, value) VALUES ('roea_version', '0.1.0');
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create config table: %w", err)
+	}
+
+	return nil
+}
+
 // openRepo opens the Fossil repository.
 func (s *Store) openRepo() error {
 	// Ensure work directory exists
 	if err := os.MkdirAll(s.workDir, 0755); err != nil {
 		return fmt.Errorf("failed to create work dir: %w", err)
+	}
+
+	// Check if fossil is available
+	if _, err := exec.LookPath("fossil"); err != nil {
+		// Fossil not installed, just connect to SQLite DB
+		return s.connectDB()
 	}
 
 	// Check if already open
@@ -103,7 +138,8 @@ func (s *Store) openRepo() error {
 
 // connectDB opens a direct SQLite connection to the fossil database.
 func (s *Store) connectDB() error {
-	db, err := sql.Open("sqlite3", s.fossilPath+"?mode=rw")
+	// Disable automatic timestamp parsing to handle dates as strings
+	db, err := sql.Open("sqlite3", s.fossilPath+"?mode=rw&_loc=auto")
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

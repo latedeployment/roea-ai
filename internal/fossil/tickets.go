@@ -72,8 +72,8 @@ func (ts *TicketStore) CreateTask(task *types.Task) error {
 		secretsJSON,
 		task.ParentID,
 		labelsJSON,
-		float64(task.CreatedAt.Unix()),
-		float64(now.Unix()),
+		task.CreatedAt.Format(time.RFC3339),
+		now.Format(time.RFC3339),
 	)
 
 	if err != nil {
@@ -171,7 +171,7 @@ func (ts *TicketStore) UpdateTask(id string, update *types.TaskUpdate) error {
 
 	// Always update mtime
 	setClauses = append(setClauses, "tkt_mtime = ?")
-	args = append(args, float64(time.Now().Unix()))
+	args = append(args, time.Now().Format(time.RFC3339))
 
 	// Add ID to args
 	args = append(args, id)
@@ -350,7 +350,7 @@ func (ts *TicketStore) scanTask(row *sql.Row) (*types.Task, error) {
 	var status, execMode, labelsJSON, secretsJSON sql.NullString
 	var parentID, result, errorMsg sql.NullString
 	var startedAt, completedAt sql.NullString
-	var ctimeUnix, mtimeUnix sql.NullFloat64
+	var ctimeRaw, mtimeRaw interface{}
 
 	err := row.Scan(
 		&task.ID,
@@ -369,8 +369,8 @@ func (ts *TicketStore) scanTask(row *sql.Row) (*types.Task, error) {
 		&labelsJSON,
 		&result,
 		&errorMsg,
-		&ctimeUnix,
-		&mtimeUnix,
+		&ctimeRaw,
+		&mtimeRaw,
 		&startedAt,
 		&completedAt,
 	)
@@ -412,10 +412,9 @@ func (ts *TicketStore) scanTask(row *sql.Row) (*types.Task, error) {
 		}
 	}
 
-	// Parse timestamps
-	if ctimeUnix.Valid {
-		task.CreatedAt = time.Unix(int64(ctimeUnix.Float64), 0)
-	}
+	// Parse timestamps (can be time.Time or string depending on SQLite driver)
+	task.CreatedAt = parseTimestamp(ctimeRaw)
+	_ = mtimeRaw // unused but scanned
 	if startedAt.Valid && startedAt.String != "" {
 		t, _ := time.Parse(time.RFC3339, startedAt.String)
 		task.StartedAt = &t
@@ -434,7 +433,7 @@ func (ts *TicketStore) scanTaskRows(rows *sql.Rows) (*types.Task, error) {
 	var status, execMode, labelsJSON, secretsJSON sql.NullString
 	var parentID, result, errorMsg sql.NullString
 	var startedAt, completedAt sql.NullString
-	var ctimeUnix, mtimeUnix sql.NullFloat64
+	var ctimeRaw, mtimeRaw interface{}
 
 	err := rows.Scan(
 		&task.ID,
@@ -453,8 +452,8 @@ func (ts *TicketStore) scanTaskRows(rows *sql.Rows) (*types.Task, error) {
 		&labelsJSON,
 		&result,
 		&errorMsg,
-		&ctimeUnix,
-		&mtimeUnix,
+		&ctimeRaw,
+		&mtimeRaw,
 		&startedAt,
 		&completedAt,
 	)
@@ -491,9 +490,9 @@ func (ts *TicketStore) scanTaskRows(rows *sql.Rows) (*types.Task, error) {
 		}
 	}
 
-	if ctimeUnix.Valid {
-		task.CreatedAt = time.Unix(int64(ctimeUnix.Float64), 0)
-	}
+	// Parse timestamps (can be time.Time or string depending on SQLite driver)
+	task.CreatedAt = parseTimestamp(ctimeRaw)
+	_ = mtimeRaw // unused but scanned
 	if startedAt.Valid && startedAt.String != "" {
 		t, _ := time.Parse(time.RFC3339, startedAt.String)
 		task.StartedAt = &t
@@ -504,6 +503,22 @@ func (ts *TicketStore) scanTaskRows(rows *sql.Rows) (*types.Task, error) {
 	}
 
 	return &task, nil
+}
+
+// parseTimestamp handles both time.Time and string timestamp values from SQLite.
+func parseTimestamp(v interface{}) time.Time {
+	if v == nil {
+		return time.Time{}
+	}
+	switch t := v.(type) {
+	case time.Time:
+		return t
+	case string:
+		if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
 
 // generateUUID generates a simple UUID for tickets.

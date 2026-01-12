@@ -101,7 +101,7 @@ func (m *Manager) CompleteTask(taskID string, result string, artifactPaths []str
 	status := types.TaskCompleted
 
 	// Store any artifacts
-	for _, path := range artifactPaths {
+	for range artifactPaths {
 		// In a real implementation, we'd read the file and store it
 		// For now, store the path as a reference
 	}
