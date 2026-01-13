@@ -17,6 +17,7 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 - THE-35: Search & Filtering System
 - THE-27: Process Tree Graph Visualization
 - THE-24: OpenTelemetry Integration Layer
+- THE-25: osquery Integration for System Telemetry
 
 ---
 
@@ -24,6 +25,7 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 
 | Commit | Message |
 |--------|---------|
+| af86997 | feat: Add osquery integration for enhanced system telemetry |
 | 84d5463 | feat: Add OpenTelemetry integration for telemetry export |
 | 5020aae | feat: Enhanced process tree visualization with multiple layouts |
 | 9f0c0f7 | feat: Add search and filtering system for process list |
@@ -142,6 +144,7 @@ roea-ai/
 | THE-35 | Search & Filtering System | 2026-01-13 |
 | THE-27 | Process Tree Graph Visualization | 2026-01-13 |
 | THE-24 | OpenTelemetry Integration Layer | 2026-01-13 |
+| THE-25 | osquery Integration for System Telemetry | 2026-01-13 |
 
 ---
 
@@ -149,7 +152,6 @@ roea-ai/
 
 | Priority | Task ID | Title |
 |----------|---------|-------|
-| High | THE-25 | osquery Integration for System Telemetry |
 | Medium | THE-29 | Create Demo Scenarios & Recordings |
 | Low | THE-34 | [Future] Enterprise Features Planning |
 
