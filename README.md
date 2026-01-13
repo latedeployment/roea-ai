@@ -32,9 +32,38 @@ AI coding agents run with significant system access but offer limited visibility
 
 *Coming soon*
 
+## Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/latedeployment/roea-ai.git
+cd roea-ai
+
+# Install dependencies and setup
+make setup
+
+# Run in development mode (two terminals)
+make run-agent    # Terminal 1: Start the monitoring daemon
+make run-ui       # Terminal 2: Start the desktop UI
+
+# Or see all available commands
+make help
+```
+
 ## Installation
 
-### From Source
+### Using Make (Recommended)
+
+```bash
+git clone https://github.com/latedeployment/roea-ai.git
+cd roea-ai
+
+make setup          # Install all dependencies
+make build-release  # Build for production
+make test           # Run all tests
+```
+
+### Manual Setup
 
 ```bash
 # Prerequisites
