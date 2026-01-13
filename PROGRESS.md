@@ -48,11 +48,15 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 - `storage/mod.rs`: DuckDB storage with processes, connections, file_ops tables
 - `monitor/mod.rs`: ProcessMonitorService with event broadcasting
 - `monitor/sysinfo_monitor.rs`: Cross-platform process monitor using sysinfo
+- `monitor/ebpf_monitor.rs`: Linux eBPF process monitor using libbpf-rs (kernel tracepoints)
+- `bpf/process_monitor.bpf.c`: eBPF program for sched_process_exec/exit tracepoints
 - `network/mod.rs`: NetworkMonitorService for connection tracking
 - `network/proc_net.rs`: Linux /proc/net parser for TCP/UDP/Unix sockets
 - `file/mod.rs`: FileMonitorService with noise filtering
 - `file/proc_fd.rs`: Linux /proc/*/fd parser for open file tracking
 - `grpc/mod.rs`: gRPC server implementing the RoeaAgent service
+- `telemetry/mod.rs`: OpenTelemetry integration with OTLP export
+- `osquery/mod.rs`: osquery integration for enhanced system queries
 - `main.rs`: Daemon entry point with config, logging, tonic server
 
 **Proto definitions** (`proto/roea.proto`):
@@ -109,13 +113,22 @@ roea-ai/
     │       ├── platform.rs
     │       └── signatures.rs
     ├── roea-agent/              # Monitoring daemon
+    │   ├── build.rs             # Build script (protobuf + eBPF)
     │   └── src/
     │       ├── lib.rs
     │       ├── main.rs
     │       ├── storage/mod.rs
     │       ├── monitor/
+    │       │   ├── mod.rs
+    │       │   ├── sysinfo_monitor.rs
+    │       │   └── ebpf_monitor.rs  # Linux eBPF backend
+    │       ├── bpf/
+    │       │   ├── process_monitor.bpf.c  # eBPF program
+    │       │   └── vmlinux.h      # (generated from kernel BTF)
     │       ├── network/
     │       ├── file/
+    │       ├── telemetry/
+    │       ├── osquery/
     │       └── grpc/mod.rs
     └── roea-ui/                 # Desktop application
         ├── package.json
@@ -163,6 +176,8 @@ roea-ai/
 - Rust 1.75+ (with cargo)
 - Node.js 18+ (with npm)
 - protobuf-compiler
+- clang/llvm (for eBPF compilation on Linux)
+- bpftool (for vmlinux.h generation on Linux)
 
 ### Build Commands
 
@@ -181,6 +196,42 @@ cd crates/roea-ui && npm run tauri dev
 
 # Build for production
 cd crates/roea-ui && npm run tauri build
+```
+
+### Linux eBPF Setup (Optional, for high-performance monitoring)
+
+The eBPF process monitor provides real-time kernel-level process tracking using
+sched_process_exec and sched_process_exit tracepoints. This is optional - the
+daemon falls back to sysinfo-based polling when eBPF is not available.
+
+**Requirements:**
+- Linux kernel 5.8+ (for ring buffer support)
+- BTF (BPF Type Format) enabled in kernel
+- CAP_BPF capability or root privileges
+- clang/llvm for BPF compilation
+
+**Setup:**
+
+```bash
+# 1. Check if BTF is available
+ls -la /sys/kernel/btf/vmlinux
+
+# 2. Generate vmlinux.h from kernel BTF
+bpftool btf dump file /sys/kernel/btf/vmlinux format c > \
+    crates/roea-agent/src/bpf/vmlinux.h
+
+# 3. Rebuild to compile eBPF program
+cargo build --release
+
+# 4. Run with elevated privileges
+sudo ./target/release/roea-agent
+# Or grant CAP_BPF:
+sudo setcap cap_bpf+ep ./target/release/roea-agent
+```
+
+When eBPF is available, you'll see in the logs:
+```
+INFO eBPF process monitoring available, using kernel tracepoints
 ```
 
 ---

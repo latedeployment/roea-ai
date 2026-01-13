@@ -33,3 +33,6 @@ Thumbs.db
 
 # Generated files
 crates/roea-agent/src/grpc/proto.rs
+
+# eBPF generated files (vmlinux.h is machine-specific)
+crates/roea-agent/src/bpf/vmlinux.h
