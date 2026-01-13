@@ -5,8 +5,10 @@
 
 pub mod events;
 pub mod platform;
+pub mod security;
 pub mod signatures;
 
 pub use events::*;
 pub use platform::*;
+pub use security::*;
 pub use signatures::*;

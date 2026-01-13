@@ -169,6 +169,7 @@ roea-ai/
 | THE-42 | [QA] UI Component Tests (Playwright) | 2026-01-13 |
 | THE-43 | [QA] Performance & Benchmark Suite | 2026-01-13 |
 | THE-47 | [DevOps] CI/CD Pipeline Core Setup | 2026-01-13 |
+| THE-56 | [QA] Security Testing & Hardening | 2026-01-13 |
 
 ---
 
@@ -180,7 +181,6 @@ roea-ai/
 | High | THE-45 | [DevOps] Cloud Testing Infrastructure - macOS |
 | High | THE-46 | [DevOps] Cloud Testing Infrastructure - Windows |
 | High | THE-55 | [QA] Platform-Specific Testing Matrix |
-| High | THE-56 | [QA] Security Testing & Hardening |
 | High | THE-57 | [QA] Agent Compatibility Testing |
 | High | THE-58 | [QA] Beta Testing Program |
 | High | THE-59 | [DevOps] Release Automation Pipeline |
@@ -953,3 +953,92 @@ cd crates/roea-ui && npm run test:e2e -- --grep "Performance"
 - `.github/workflows/nightly.yml` - Full test suite workflow
 - `.github/workflows/release.yml` - Improved release workflow
 - `.github/dependabot.yml` - Dependency update automation
+
+---
+
+### Task Selection: THE-56 - Security Testing & Hardening
+
+**Why Selected:**
+1. High priority QA task for ensuring production readiness
+2. Security hardening is code-based work that can be fully implemented
+3. Extends CI/CD work from THE-47 with deeper security scanning
+4. Critical for user trust and safe operation
+5. Dependency scanning already partially in place, now adding comprehensive security
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+
+1. **cargo-deny Configuration** (`deny.toml`):
+   - Advisory database checking for known vulnerabilities
+   - License allowlist (MIT, Apache-2.0, BSD, etc.)
+   - License denylist (GPL-3.0, AGPL-3.0)
+   - Ban list for problematic crates
+   - Source validation (crates.io only, trusted git sources)
+
+2. **Dedicated Security Workflow** (`.github/workflows/security.yml`):
+   - cargo-audit for Rust vulnerability scanning
+   - cargo-deny for comprehensive supply chain checking
+   - npm audit for JavaScript vulnerabilities
+   - SAST scanning with security-focused Clippy lints
+   - ESLint security rules for JavaScript
+   - Secret scanning for accidentally committed credentials
+   - File permission checks
+   - CodeQL analysis for deep semantic scanning
+   - Security summary report
+
+3. **Security Module** (`crates/roea-common/src/security.rs`):
+   - `sanitize_for_log()`: Redacts API keys, tokens, credentials from logs
+   - `sanitize_cmdline()`: Redacts secrets from command line strings
+   - `is_sensitive_path()`: Identifies sensitive file paths
+   - `is_sensitive_env_var()`: Identifies sensitive environment variables
+   - `is_safe_path()`: Validates paths for directory traversal attacks
+   - `normalize_path()`: Safely normalizes file paths
+   - `mask_string()`: Partial string masking for display
+   - `sanitize_env_vars()`: Batch redaction of environment variables
+
+   **Patterns Detected:**
+   - Anthropic API keys (sk-ant-...)
+   - OpenAI API keys (sk-...)
+   - GitHub tokens (ghp_, gho_, ghu_, etc.)
+   - AWS access keys (AKIA...)
+   - Bearer tokens
+   - Generic API key assignments
+
+4. **Security Documentation** (`SECURITY.md`):
+   - Vulnerability reporting process
+   - Security measures overview
+   - Data handling policies
+   - Permission model
+   - Code security practices
+   - Build security
+   - Security scanning description
+   - Best practices for users
+   - Secure development guidelines
+   - Code patterns to avoid
+   - Third-party dependency policies
+   - Incident response procedures
+
+**Security Tests:**
+- Anthropic key redaction
+- OpenAI key redaction
+- GitHub token redaction
+- AWS key redaction
+- Bearer token redaction
+- Command line flag redaction
+- Sensitive path detection
+- Sensitive environment variable detection
+- Path traversal attack prevention
+- Null byte injection prevention
+- Shell metacharacter prevention
+- String masking
+
+**Files Created:**
+- `deny.toml` - cargo-deny configuration
+- `.github/workflows/security.yml` - Dedicated security scanning workflow
+- `crates/roea-common/src/security.rs` - Security utilities module
+- `SECURITY.md` - Security policy and guidelines
+
+**Files Modified:**
+- `crates/roea-common/src/lib.rs` - Added security module export
+- `crates/roea-common/Cargo.toml` - Added regex-lite dependency

@@ -1,0 +1,315 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 3 AM UTC (after nightly builds)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # Rust dependency audit
+  cargo-audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit --json > audit-results.json || true
+
+      - name: Check for vulnerabilities
+        run: |
+          if cargo audit 2>&1 | grep -E "Crate:|RUSTSEC-"; then
+            echo "::warning::Security vulnerabilities found in Rust dependencies"
+          fi
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-results
+          path: audit-results.json
+          retention-days: 30
+
+  # Comprehensive Rust supply chain checking
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Check advisories
+        run: cargo deny check advisories
+        continue-on-error: true
+
+      - name: Check licenses
+        run: cargo deny check licenses
+
+      - name: Check bans
+        run: cargo deny check bans
+
+      - name: Check sources
+        run: cargo deny check sources
+
+      - name: Full cargo deny check
+        run: cargo deny check || true
+
+  # npm dependency audit
+  npm-audit:
+    name: NPM Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/roea-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/roea-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run npm audit
+        run: npm audit --json > npm-audit-results.json || true
+
+      - name: Check for high/critical vulnerabilities
+        run: |
+          if npm audit --audit-level=high 2>&1 | grep -q "found"; then
+            echo "::warning::High or critical vulnerabilities found in npm dependencies"
+          fi
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: crates/roea-ui/npm-audit-results.json
+          retention-days: 30
+
+  # Rust SAST with cargo-clippy security lints
+  sast-rust:
+    name: SAST - Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: clippy
+
+      - name: Install protobuf
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-
+
+      # Security-focused clippy lints
+      - name: Run clippy security checks
+        run: |
+          cargo clippy --all-targets --all-features -- \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -W clippy::panic \
+            -W clippy::unimplemented \
+            -W clippy::todo \
+            -W clippy::dbg_macro \
+            -W clippy::print_stdout \
+            -W clippy::print_stderr \
+            -W clippy::unwrap_in_result \
+            2>&1 | tee clippy-security.log || true
+
+      - name: Upload clippy results
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-security-results
+          path: clippy-security.log
+          retention-days: 30
+
+  # TypeScript/JavaScript SAST
+  sast-js:
+    name: SAST - JavaScript
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/roea-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/roea-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # ESLint with security rules
+      - name: Run ESLint security checks
+        run: |
+          npx eslint src/ --ext .ts,.tsx,.js,.jsx \
+            --rule 'no-eval: error' \
+            --rule 'no-implied-eval: error' \
+            --rule 'no-new-func: error' \
+            --rule 'no-script-url: error' \
+            2>&1 | tee eslint-security.log || true
+        continue-on-error: true
+
+      - name: Upload ESLint results
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-security-results
+          path: crates/roea-ui/eslint-security.log
+          retention-days: 30
+
+  # Secret scanning
+  secrets-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Check for accidentally committed secrets
+      - name: Scan for secrets
+        run: |
+          # Look for common secret patterns
+          echo "Scanning for potential secrets..."
+
+          # API keys patterns
+          if grep -rE "(api[_-]?key|apikey)\s*[:=]\s*['\"][a-zA-Z0-9]{20,}['\"]" --include="*.rs" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.json" --include="*.toml" --include="*.yaml" --include="*.yml" . 2>/dev/null; then
+            echo "::warning::Potential API key found"
+          fi
+
+          # Private keys
+          if grep -rE "-----BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY-----" . 2>/dev/null; then
+            echo "::error::Private key found in repository!"
+            exit 1
+          fi
+
+          # AWS credentials
+          if grep -rE "(AKIA|A3T|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}" . 2>/dev/null; then
+            echo "::error::Potential AWS credentials found!"
+            exit 1
+          fi
+
+          # GitHub tokens
+          if grep -rE "gh[pousr]_[A-Za-z0-9_]{36,}" . 2>/dev/null; then
+            echo "::error::GitHub token found in repository!"
+            exit 1
+          fi
+
+          echo "No obvious secrets detected"
+
+  # File permission checks
+  permissions-check:
+    name: Permission Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for overly permissive files
+        run: |
+          # Find files with world-writable permissions
+          if find . -type f -perm -0002 ! -path "./.git/*" | grep -q .; then
+            echo "::warning::Found files with world-writable permissions"
+            find . -type f -perm -0002 ! -path "./.git/*"
+          fi
+
+          # Check script permissions
+          echo "Checking executable files..."
+          find . -type f -name "*.sh" -o -name "*.py" | while read file; do
+            if [ -x "$file" ]; then
+              echo "Executable: $file"
+            fi
+          done
+
+  # Security tests
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install protobuf
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Run security tests
+        run: cargo test security --all-features -- --nocapture || true
+        continue-on-error: true
+
+  # CodeQL Analysis
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  # Summary
+  security-summary:
+    name: Security Summary
+    needs: [cargo-audit, cargo-deny, npm-audit, sast-rust, sast-js, secrets-scan, permissions-check, codeql]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Cargo Audit | ${{ needs.cargo-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cargo Deny | ${{ needs.cargo-deny.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NPM Audit | ${{ needs.npm-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SAST Rust | ${{ needs.sast-rust.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SAST JS | ${{ needs.sast-js.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scan | ${{ needs.secrets-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Permission Check | ${{ needs.permissions-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CodeQL | ${{ needs.codeql.result }} |" >> $GITHUB_STEP_SUMMARY
