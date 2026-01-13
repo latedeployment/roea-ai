@@ -313,3 +313,86 @@ INFO eBPF process monitoring available, using kernel tracepoints
    - Snapshot non-empty, field completeness
 
 **Total: 40 unit tests covering all THE-37 requirements**
+
+---
+
+### Task Selection: THE-38 - Unit Tests - Network Tracking
+
+**Why Selected:**
+1. Continues THE-36 (QA Testing Platform Architecture) epic - Urgent priority
+2. Network tracking is the second core monitoring component after process monitoring
+3. Follows natural dependency order: process tests -> network tests -> file tests -> signature tests
+4. Foundation for E2E integration tests (THE-41)
+5. Tests needed: TCP/UDP detection, Unix sockets, connection states, IPv4/IPv6, high volume
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Created comprehensive test module in `crates/roea-agent/src/network/tests.rs`
+- Implemented MockNetworkMonitor backend for deterministic testing
+- Made parse_ipv4_addr and parse_ipv6_addr functions pub(crate) for testing
+
+**Test Coverage:**
+1. **TCP/UDP Detection Tests** (6 tests):
+   - TCP/UDP connection creation
+   - UDP without remote (connectionless)
+   - Protocol filtering
+   - Multiple connections per process
+   - Well-known ports
+
+2. **Unix Socket Tests** (5 tests):
+   - Standard socket creation
+   - Abstract sockets (@prefix)
+   - Anonymous sockets
+   - Common socket paths
+   - Unix socket filtering
+
+3. **Connection State Tests** (5 tests):
+   - Initial states (Connecting/Established/Closed)
+   - State transitions
+   - Update nonexistent connection
+   - Full connection lifecycle
+
+4. **IPv4/IPv6 Tests** (7 tests):
+   - IPv4 address handling
+   - IPv6 address handling
+   - Mixed IP versions
+   - Loopback addresses (v4 and v6)
+   - IPv4-mapped IPv6 addresses
+
+5. **High Volume Tests** (5 tests):
+   - 1000 concurrent connections
+   - Rapid add/remove cycles
+   - Concurrent access (4 threads)
+   - Snapshot performance
+   - Many PIDs distribution
+
+6. **Endpoint Classification Tests** (6 tests):
+   - LLM API endpoints (Anthropic, OpenAI, Cursor)
+   - GitHub endpoints
+   - Package registries (npm, pypi, crates.io)
+   - Telemetry endpoints
+   - Localhost detection
+   - Unknown endpoints
+
+7. **Edge Case Tests** (6 tests):
+   - Ephemeral ports
+   - Connection inheritance (fork)
+   - Zero port handling
+   - Wildcard addresses
+   - Unique connection IDs
+   - AI agent connection set
+
+8. **Backend Trait Tests** (4 tests):
+   - Start/stop lifecycle
+   - Idempotent start
+   - Empty and populated snapshots
+
+9. **Address Parsing Tests** (5 tests):
+   - IPv4 localhost parsing
+   - IPv4 any address
+   - IPv4 high port
+   - Invalid address handling
+   - IPv6 localhost parsing
+
+**Total: 49 unit tests covering all THE-38 requirements**

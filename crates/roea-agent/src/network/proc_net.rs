@@ -296,7 +296,7 @@ impl NetworkMonitorBackend for ProcNetMonitor {
 }
 
 /// Parse IPv4 address in hex format (e.g., "0100007F:0050")
-fn parse_ipv4_addr(addr: &str) -> (String, u16) {
+pub(crate) fn parse_ipv4_addr(addr: &str) -> (String, u16) {
     let parts: Vec<&str> = addr.split(':').collect();
     if parts.len() != 2 {
         return (String::new(), 0);
@@ -324,7 +324,7 @@ fn parse_ipv4_addr(addr: &str) -> (String, u16) {
 }
 
 /// Parse IPv6 address in hex format
-fn parse_ipv6_addr(addr: &str) -> (String, u16) {
+pub(crate) fn parse_ipv6_addr(addr: &str) -> (String, u16) {
     let parts: Vec<&str> = addr.split(':').collect();
     if parts.len() != 2 {
         return (String::new(), 0);
