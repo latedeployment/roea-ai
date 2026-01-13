@@ -549,3 +549,91 @@ INFO eBPF process monitoring available, using kernel tracepoints
     - Minimal signature deserialization
 
 **Total: 40 unit tests covering all THE-40 requirements**
+
+---
+
+### Task Selection: THE-41 - E2E Integration Tests
+
+**Why Selected:**
+1. Continues THE-36 (QA Testing Platform Architecture) epic - Urgent priority
+2. Unit tests for all core modules are now complete (THE-37 through THE-40)
+3. E2E tests validate the full system integration from UI to backend
+4. Essential for verifying real-world AI agent workflow scenarios
+5. Required for CI/CD pipeline and quality assurance before release
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Set up Playwright test framework for Tauri UI testing
+- Created mock Tauri IPC layer for deterministic testing
+- Implemented comprehensive E2E test scenarios
+- Added golden file (snapshot) comparison infrastructure
+- Integrated E2E tests into CI/CD pipeline
+
+**Test Infrastructure:**
+- `playwright.config.ts`: Playwright configuration with multi-browser support
+- `tests/e2e/fixtures/mock-data.ts`: Mock data for all scenarios
+- `tests/e2e/fixtures/tauri-mock.ts`: Tauri IPC mock setup
+
+**Test Scenarios (5+ as required):**
+
+1. **Claude Code Session** (18 tests):
+   - Connection status display
+   - Agent sidebar with process count
+   - Process graph rendering
+   - Parent-child relationship visualization
+   - Process details panel
+   - Network connections display
+   - Stats bar accuracy
+   - Exited process styling
+   - Agent filtering
+   - Search functionality
+   - JSON/CSV export
+   - Golden file snapshots
+
+2. **Cursor IDE Session** (17 tests):
+   - Multiple helper processes
+   - Language server tracking (rust-analyzer, gopls, tsserver)
+   - Extension connections
+   - Process tree depth
+   - Executable paths display
+   - Command line arguments
+
+3. **Multi-Agent Session** (20 tests):
+   - Concurrent agents display
+   - Per-agent process counts
+   - Agent filtering and switching
+   - Cross-agent search
+   - Combined export
+   - Visual differentiation
+   - Performance with many processes
+
+4. **Long-Running Session** (13 tests):
+   - Large dataset handling
+   - Accumulated events
+   - Mix of active/exited processes
+   - Performance under load
+   - Stability tests (rapid filtering, search)
+
+5. **Disconnected/Edge States** (12 tests):
+   - Disconnected UI state
+   - Reconnect functionality
+   - Empty state handling
+   - No agents detected
+   - Error handling
+   - Malformed data recovery
+
+**CI Integration:**
+- Added E2E test job to `.github/workflows/ci.yml`
+- Chromium browser tests run on every PR
+- Test results uploaded as artifacts
+- HTML and JSON report generation
+
+**npm Scripts Added:**
+- `npm run test:e2e` - Run all E2E tests
+- `npm run test:e2e:headed` - Run with visible browser
+- `npm run test:e2e:ui` - Interactive Playwright UI
+- `npm run test:e2e:debug` - Debug mode
+- `npm run test:e2e:update` - Update snapshots
+
+**Total: 80+ E2E tests across 5 scenario files**
