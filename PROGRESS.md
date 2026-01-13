@@ -637,3 +637,93 @@ INFO eBPF process monitoring available, using kernel tracepoints
 - `npm run test:e2e:update` - Update snapshots
 
 **Total: 80+ E2E tests across 5 scenario files**
+
+---
+
+### Task Selection: THE-42 - UI Component Tests (Playwright)
+
+**Why Selected:**
+1. Continues THE-36 (QA Testing Platform Architecture) epic - Urgent priority
+2. E2E integration tests (THE-41) are complete, now testing individual components
+3. Component tests ensure graph rendering, search, and interactions work correctly
+4. Required for visual regression testing and detecting UI breakages
+5. Builds on existing Playwright infrastructure from THE-41
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Created comprehensive component-level tests
+- Added visual regression testing with Playwright screenshots
+- Implemented keyboard accessibility tests
+- Added responsive design tests for various viewport sizes
+- Created real-time update handling tests
+
+**Test Files Created:**
+
+1. **ProcessGraph Component** (`process-graph.spec.ts`) - 35 tests:
+   - Graph rendering (SVG, nodes, links, markers)
+   - Layout types (force, tree, radial)
+   - Network overlay toggle
+   - Zoom controls and panning
+   - Node interactions (click, hover, drag)
+   - Legend display
+   - Performance benchmarks
+   - Visual regression snapshots
+
+2. **SearchBar Component** (`search-bar.spec.ts`) - 40 tests:
+   - Basic text search (name, PID, cmdline, path)
+   - Case-insensitive search
+   - Clear button functionality
+   - Advanced filters panel
+   - Agent type filtering
+   - Status (active/exited) filtering
+   - PID range filtering
+   - Export functionality (JSON/CSV)
+   - Keyboard navigation
+   - Search performance
+
+3. **Keyboard Navigation** (`keyboard-navigation.spec.ts`) - 20 tests:
+   - Tab navigation through elements
+   - Shift+Tab backwards navigation
+   - Enter/Space button activation
+   - Escape key handling
+   - Arrow key navigation in inputs
+   - Focus indicators
+   - Focus management in dialogs
+
+4. **Responsive Design** (`responsive-design.spec.ts`) - 30 tests:
+   - Desktop viewport (1280x800)
+   - Widescreen viewport (1920x1080)
+   - Minimum size viewport (800x600)
+   - Tablet viewport (768x1024)
+   - Dynamic resize handling
+   - Component layout verification
+   - Details panel responsiveness
+   - Visual regression at different sizes
+
+5. **Real-time Updates** (`real-time-updates.spec.ts`) - 25 tests:
+   - Process addition to graph
+   - Multiple process batch updates
+   - Process removal handling
+   - Stats bar updates
+   - Layout stability during updates
+   - Selected process preservation
+   - Connection updates
+   - Performance under rapid changes
+
+**Visual Regression Testing:**
+- Screenshot comparison for graph layouts
+- Empty state snapshots
+- Search bar states
+- Responsive layout snapshots
+- MaxDiffPixelRatio: 0.1 to handle simulation randomness
+
+**Test Coverage Areas:**
+- Graph rendering correctness
+- Real-time updates don't break layout
+- Search functionality
+- Filter interactions
+- Keyboard navigation
+- Responsive design
+
+**Total: 150+ component tests across 5 test files**
