@@ -80,6 +80,18 @@ async fn get_signatures(state: State<'_, AppState>) -> Result<Vec<serde_json::Va
         .map_err(|e| format!("Failed to get signatures: {}", e))
 }
 
+/// Get network connections
+#[tauri::command]
+async fn get_connections(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("Not connected to agent")?;
+
+    client
+        .get_connections()
+        .await
+        .map_err(|e| format!("Failed to get connections: {}", e))
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -91,6 +103,7 @@ fn main() {
             get_status,
             get_processes,
             get_signatures,
+            get_connections,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

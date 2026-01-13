@@ -67,9 +67,12 @@ export interface ProcessNode extends d3.SimulationNodeDatum {
   name: string;
   agentType: string;
   isAgent: boolean;
+  isActive?: boolean;
+  connectionCount?: number;
 }
 
 export interface ProcessLink extends d3.SimulationLinkDatum<ProcessNode> {
   source: ProcessNode | string;
   target: ProcessNode | string;
+  type?: "parent-child" | "network";
 }

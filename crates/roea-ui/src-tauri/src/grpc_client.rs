@@ -100,4 +100,38 @@ impl AgentClient {
             })
             .collect())
     }
+
+    /// Get network connections
+    pub async fn get_connections(&self) -> Result<Vec<Value>> {
+        let mut client = self.inner.clone();
+        let request = QueryRequest {
+            start_time: 0,
+            end_time: 0,
+            agent_types: vec![],
+            process_name_pattern: String::new(),
+            limit: 500,
+            offset: 0,
+        };
+
+        let response = client.query_connections(request).await?;
+        let connections = response.into_inner().connections;
+
+        Ok(connections
+            .into_iter()
+            .map(|c| {
+                json!({
+                    "id": c.id,
+                    "processId": c.process_id,
+                    "pid": c.pid,
+                    "protocol": c.protocol,
+                    "localAddr": c.local_addr,
+                    "localPort": c.local_port,
+                    "remoteAddr": c.remote_addr,
+                    "remotePort": c.remote_port,
+                    "state": c.state,
+                    "timestamp": c.timestamp,
+                })
+            })
+            .collect())
+    }
 }

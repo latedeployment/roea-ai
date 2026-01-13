@@ -20,6 +20,8 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 
 | Commit | Message |
 |--------|---------|
+| 9f0c0f7 | feat: Add search and filtering system for process list |
+| 3723d19 | ci: Add GitHub Actions CI/CD pipeline |
 | e40a42d | feat: Implement core roea-ai monitoring infrastructure |
 | 7259718 | THE-31 - [SPIKE] Technical Architecture POC |
 
@@ -130,6 +132,8 @@ roea-ai/
 | THE-26 | Local Storage Layer (Embedded DB) | 2026-01-13 |
 | THE-32 | File Access Monitoring System | 2026-01-13 |
 | THE-33 | Network Connection Tracking | 2026-01-13 |
+| THE-30 | Cross-Platform Build & Distribution Pipeline | 2026-01-13 |
+| THE-35 | Search & Filtering System | 2026-01-13 |
 
 ---
 
@@ -139,8 +143,6 @@ roea-ai/
 |----------|---------|-------|
 | High | THE-27 | Process Tree Graph Visualization (enhanced) |
 | Medium | THE-29 | Create Demo Scenarios & Recordings |
-| Medium | THE-30 | Cross-Platform Build & Distribution Pipeline |
-| Medium | THE-35 | Search & Filtering System |
 | Low | THE-34 | [Future] Enterprise Features Planning |
 
 ---

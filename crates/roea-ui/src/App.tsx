@@ -6,7 +6,7 @@ import { SearchBar } from "./components/SearchBar";
 import { ProcessGraph } from "./components/ProcessGraph";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { StatsBar } from "./components/StatsBar";
-import { Process, AgentSignature, AgentStatus } from "./lib/types";
+import { Process, Connection, AgentSignature, AgentStatus } from "./lib/types";
 
 // Helper to trigger file download in browser
 function downloadFile(content: string, filename: string, mimeType: string) {
@@ -25,6 +25,7 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [processes, setProcesses] = useState<Process[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [filteredProcesses, setFilteredProcesses] = useState<Process[]>([]);
   const [signatures, setSignatures] = useState<AgentSignature[]>([]);
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
@@ -42,6 +43,7 @@ function App() {
     const refresh = () => {
       refreshStatus();
       refreshProcesses();
+      refreshConnections();
     };
 
     refresh();
@@ -77,6 +79,15 @@ function App() {
       setProcesses(result);
     } catch (e) {
       console.error("Failed to get processes:", e);
+    }
+  };
+
+  const refreshConnections = async () => {
+    try {
+      const result = await invoke<Connection[]>("get_connections", {});
+      setConnections(result);
+    } catch (e) {
+      console.error("Failed to get connections:", e);
     }
   };
 
@@ -156,6 +167,7 @@ function App() {
         />
         <ProcessGraph
           processes={displayProcesses}
+          connections={connections}
           selectedProcess={selectedProcess}
           onSelectProcess={setSelectedProcess}
         />
