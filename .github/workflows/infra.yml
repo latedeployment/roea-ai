@@ -1,0 +1,293 @@
+# Infrastructure CI/CD Workflow
+# Validates and applies Terraform configurations for roea-ai infrastructure
+
+name: Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to plan/apply'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.6.0"
+  TF_INPUT: false
+
+jobs:
+  # Validate all Terraform configurations
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        working-directory: infra
+        continue-on-error: true
+
+      - name: Validate Module
+        id: validate-module
+        run: |
+          cd modules/hetzner-runner
+          terraform init -backend=false
+          terraform validate
+        working-directory: infra
+
+      - name: Validate Dev Environment
+        id: validate-dev
+        run: |
+          cd environments/dev
+          terraform init -backend=false
+          terraform validate
+        working-directory: infra
+
+      - name: Validate Prod Environment
+        id: validate-prod
+        run: |
+          cd environments/prod
+          terraform init -backend=false
+          terraform validate
+        working-directory: infra
+
+      - name: Post Validation Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fmtOutcome = '${{ steps.fmt.outcome }}';
+            const validateModule = '${{ steps.validate-module.outcome }}';
+            const validateDev = '${{ steps.validate-dev.outcome }}';
+            const validateProd = '${{ steps.validate-prod.outcome }}';
+
+            const emoji = (outcome) => outcome === 'success' ? '✅' : '❌';
+
+            const body = `## Infrastructure Validation Results
+
+            | Check | Status |
+            |-------|--------|
+            | Terraform Format | ${emoji(fmtOutcome)} |
+            | Module: hetzner-runner | ${emoji(validateModule)} |
+            | Environment: dev | ${emoji(validateDev)} |
+            | Environment: prod | ${emoji(validateProd)} |
+
+            ${fmtOutcome !== 'success' ? '\n⚠️ **Formatting issues detected.** Run `terraform fmt -recursive` in the `infra/` directory.\n' : ''}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Check Results
+        if: steps.fmt.outcome != 'success' || steps.validate-module.outcome != 'success' || steps.validate-dev.outcome != 'success' || steps.validate-prod.outcome != 'success'
+        run: exit 1
+
+  # Security scanning with tfsec
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra
+          soft_fail: true
+
+  # Plan changes for dev environment
+  plan-dev:
+    name: Plan (Dev)
+    runs-on: ubuntu-latest
+    needs: [validate, security]
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    environment: dev-plan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: infra/environments/dev
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan \
+            -var="hcloud_token=${{ secrets.HCLOUD_TOKEN_DEV || 'placeholder' }}" \
+            -var="github_repo=${{ github.repository }}" \
+            2>&1 | tee plan_output.txt
+        working-directory: infra/environments/dev
+        continue-on-error: true
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN_DEV }}
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('infra/environments/dev/plan_output.txt', 'utf8');
+
+            // Truncate if too long
+            const maxLength = 60000;
+            const truncated = planOutput.length > maxLength
+              ? planOutput.substring(0, maxLength) + '\n\n... (truncated)'
+              : planOutput;
+
+            const body = `## Terraform Plan (Dev)
+
+            <details>
+            <summary>Click to expand plan output</summary>
+
+            \`\`\`hcl
+            ${truncated}
+            \`\`\`
+
+            </details>
+
+            **Plan Outcome:** ${{ steps.plan.outcome }}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # Plan changes for prod environment
+  plan-prod:
+    name: Plan (Prod)
+    runs-on: ubuntu-latest
+    needs: [validate, security]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment: prod-plan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: infra/environments/prod
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan \
+            -var="hcloud_token=${{ secrets.HCLOUD_TOKEN_PROD }}" \
+            -var="github_repo=${{ github.repository }}"
+        working-directory: infra/environments/prod
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN_PROD }}
+
+  # Apply changes (manual trigger only)
+  apply-dev:
+    name: Apply (Dev)
+    runs-on: ubuntu-latest
+    needs: plan-dev
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && github.event.inputs.environment == 'dev'
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: infra/environments/dev
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var="hcloud_token=${{ secrets.HCLOUD_TOKEN_DEV }}" \
+            -var="github_repo=${{ github.repository }}" \
+            -var="github_token=${{ secrets.RUNNER_GITHUB_TOKEN }}"
+        working-directory: infra/environments/dev
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN_DEV }}
+          GITHUB_TOKEN: ${{ secrets.RUNNER_GITHUB_TOKEN }}
+
+  apply-prod:
+    name: Apply (Prod)
+    runs-on: ubuntu-latest
+    needs: plan-prod
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && github.event.inputs.environment == 'prod'
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: infra/environments/prod
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var="hcloud_token=${{ secrets.HCLOUD_TOKEN_PROD }}" \
+            -var="github_repo=${{ github.repository }}" \
+            -var="github_token=${{ secrets.RUNNER_GITHUB_TOKEN }}"
+        working-directory: infra/environments/prod
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN_PROD }}
+          GITHUB_TOKEN: ${{ secrets.RUNNER_GITHUB_TOKEN }}

@@ -1,0 +1,38 @@
+# Production Environment - Example Variables
+# Copy this file to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to version control!
+
+# Hetzner Cloud API token (required)
+# Use a separate token for production with appropriate access controls
+hcloud_token = "your-production-hetzner-api-token"
+
+# GitHub repository for runner registration (required)
+github_repo = "your-org/roea-ai"
+
+# GitHub Personal Access Token (optional - can also be set via GITHUB_TOKEN env var)
+# For production, consider using a GitHub App instead of PAT
+# github_token = "ghp_xxxxxxxxxxxx"
+
+# SSH key names registered in Hetzner Cloud (required for prod)
+ssh_key_names = ["prod-deploy-key", "ops-team-key"]
+
+# Number of standard runners (1-10)
+runner_count = 2
+
+# Number of dedicated E2E test runners (0-3)
+e2e_runner_count = 1
+
+# Server type for standard runners
+# cx31 recommended for production (2 vCPU, 8GB RAM)
+runner_type = "cx31"
+
+# Server type for E2E runners
+# ccx13 recommended (dedicated CPU) for consistent performance
+e2e_runner_type = "ccx13"
+
+# Primary datacenter location
+# fsn1 (Falkenstein) recommended for European users
+location = "fsn1"
+
+# Secondary datacenter for redundancy
+secondary_location = "nbg1"

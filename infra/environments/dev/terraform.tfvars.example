@@ -1,0 +1,29 @@
+# Development Environment - Example Variables
+# Copy this file to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to version control!
+
+# Hetzner Cloud API token (required)
+# Get from: https://console.hetzner.cloud/ -> Security -> API Tokens
+hcloud_token = "your-hetzner-api-token"
+
+# GitHub repository for runner registration (required)
+github_repo = "your-org/roea-ai"
+
+# GitHub Personal Access Token (optional - can also be set via GITHUB_TOKEN env var)
+# Required scopes: repo, admin:org (for org runners) or admin:repo_hook (for repo runners)
+# github_token = "ghp_xxxxxxxxxxxx"
+
+# SSH key names registered in Hetzner Cloud (optional but recommended)
+# Register keys at: https://console.hetzner.cloud/ -> Security -> SSH Keys
+ssh_key_names = ["my-laptop", "my-desktop"]
+
+# Number of runners to create (0-5 for dev)
+runner_count = 1
+
+# Server type for runners
+# Options: cx21 (2 vCPU, 4GB), cx31 (2 vCPU, 8GB), ccx13 (2 dedicated, 8GB)
+runner_type = "cx21"
+
+# Datacenter location
+# Options: nbg1 (Nuremberg), fsn1 (Falkenstein), hel1 (Helsinki), ash (Ashburn), hil (Hillsboro)
+location = "nbg1"

@@ -175,27 +175,27 @@ roea-ai/
 | THE-59 | [DevOps] Release Automation Pipeline | 2026-01-13 |
 | THE-54 | [Marketing] Documentation Site Setup | 2026-01-13 |
 | THE-51 | [Marketing] Website Design & Development | 2026-01-13 |
+| THE-49 | [DevOps] Infrastructure as Code | 2026-01-13 |
 
 ---
 
 ## Remaining Backlog (Priority Order)
 
-| Priority | Task ID | Title |
-|----------|---------|-------|
-| High | THE-44 | [DevOps] Cloud Testing Infrastructure - Linux |
-| High | THE-45 | [DevOps] Cloud Testing Infrastructure - macOS |
-| High | THE-46 | [DevOps] Cloud Testing Infrastructure - Windows |
-| High | THE-55 | [QA] Platform-Specific Testing Matrix |
-| High | THE-57 | [QA] Agent Compatibility Testing |
-| High | THE-58 | [QA] Beta Testing Program |
-| High | THE-60 | [DevOps] Code Signing Infrastructure |
-| High | THE-50 | [Marketing] Demo Video Production |
-| High | THE-52 | [Marketing] Brand Identity & Visual Assets |
-| High | THE-28 | [Epic] Marketing & Go-to-Market Strategy |
-| Medium | THE-49 | [DevOps] Infrastructure as Code |
-| Medium | THE-53 | [Marketing] Create Demo GIFs |
-| Medium | THE-29 | Create Demo Scenarios & Recordings |
-| Low | THE-34 | [Future] Enterprise Features Planning |
+| Priority | Task ID | Title | Notes |
+|----------|---------|-------|-------|
+| High | THE-44 | [DevOps] Cloud Testing Infrastructure - Linux | Needs Hetzner account |
+| High | THE-45 | [DevOps] Cloud Testing Infrastructure - macOS | Needs MacStadium account |
+| High | THE-46 | [DevOps] Cloud Testing Infrastructure - Windows | Needs Azure/AWS account |
+| High | THE-55 | [QA] Platform-Specific Testing Matrix | Needs cloud infra |
+| High | THE-57 | [QA] Agent Compatibility Testing | Manual testing required |
+| High | THE-58 | [QA] Beta Testing Program | Manual coordination |
+| High | THE-60 | [DevOps] Code Signing Infrastructure | Needs certificates |
+| High | THE-50 | [Marketing] Demo Video Production | Video editing needed |
+| High | THE-52 | [Marketing] Brand Identity & Visual Assets | Design work needed |
+| High | THE-28 | [Epic] Marketing & Go-to-Market Strategy | Strategy work |
+| Medium | THE-53 | [Marketing] Create Demo GIFs | Screen recording needed |
+| Medium | THE-29 | Create Demo Scenarios & Recordings | Demo prep needed |
+| Low | THE-34 | [Future] Enterprise Features Planning | Future planning |
 
 ---
 
@@ -1324,3 +1324,99 @@ Decided to enhance the existing VitePress documentation site with marketing elem
 **Files Modified:**
 - `website/docs/.vitepress/config.ts` - Added download nav link
 - `website/docs/index.md` - Complete marketing redesign
+
+---
+
+### Task Selection: THE-49 - Infrastructure as Code
+
+**Why Selected:**
+1. Medium priority DevOps task enabling automated infrastructure management
+2. Creates Terraform scaffolding for Hetzner Cloud CI runners
+3. Prepares infrastructure for when cloud accounts are set up
+4. Supports THE-44/45/46 cloud testing infrastructure needs
+5. Enables reproducible, version-controlled infrastructure
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+
+1. **Hetzner Runner Module** (`infra/modules/hetzner-runner/`):
+   - `main.tf`: Server resource with cloud-init user data
+     - Automatic runner download and registration
+     - Docker installation support
+     - Rust toolchain installation
+     - Node.js via nvm installation
+     - Firewall creation and attachment
+   - `variables.tf`: Comprehensive input variables
+     - Server type, image, location configuration
+     - SSH key and firewall configuration
+     - GitHub repo and runner labels
+     - Environment tagging
+     - Optional toolchain installation flags
+   - `outputs.tf`: Useful outputs
+     - Server ID, IP, status
+     - SSH command for easy access
+     - Firewall ID
+     - Runner configuration summary
+
+2. **Environment Configurations**:
+   - **Dev** (`infra/environments/dev/`):
+     - `main.tf`: Development runner deployment
+     - `variables.tf`: Dev-specific variables (0-5 runners)
+     - `terraform.tfvars.example`: Example configuration
+   - **Prod** (`infra/environments/prod/`):
+     - `main.tf`: Production deployment with redundancy
+     - Standard and dedicated E2E runners
+     - Multi-location distribution
+     - `variables.tf`: Prod-specific variables (1-10 runners)
+     - `terraform.tfvars.example`: Production example config
+
+3. **Setup Scripts** (`infra/scripts/`):
+   - `bootstrap.sh`: State backend initialization
+     - Local, Hetzner Object Storage, or AWS S3 backends
+     - Bucket creation for AWS S3
+     - Step-by-step instructions for Hetzner
+   - `setup-runner.sh`: Manual runner configuration
+     - Registration token retrieval from GitHub
+     - Runner download and configuration
+     - Service installation and startup
+     - Uninstall support
+
+4. **Infrastructure CI Workflow** (`.github/workflows/infra.yml`):
+   - Terraform format and validation on PR
+   - Security scanning with tfsec
+   - Plan output posted to PR comments
+   - Manual apply with environment protection
+   - Separate dev and prod workflows
+
+5. **Documentation** (`infra/README.md`):
+   - Complete setup instructions
+   - Module documentation
+   - Cost estimates for Hetzner resources
+   - Security considerations
+   - Troubleshooting guide
+
+**Infrastructure Features:**
+- Module-based architecture for reusability
+- Cloud-init for zero-touch provisioning
+- Environment separation (dev/prod)
+- Remote state backend support (S3-compatible)
+- GitHub Actions runner auto-registration
+- Firewall management
+- Multi-location deployment for redundancy
+
+**Files Created:**
+- `infra/README.md` - Infrastructure documentation
+- `infra/.gitignore` - Terraform ignore rules
+- `infra/modules/hetzner-runner/main.tf` - Server resource
+- `infra/modules/hetzner-runner/variables.tf` - Input variables
+- `infra/modules/hetzner-runner/outputs.tf` - Outputs
+- `infra/environments/dev/main.tf` - Dev configuration
+- `infra/environments/dev/variables.tf` - Dev variables
+- `infra/environments/dev/terraform.tfvars.example` - Dev example
+- `infra/environments/prod/main.tf` - Prod configuration
+- `infra/environments/prod/variables.tf` - Prod variables
+- `infra/environments/prod/terraform.tfvars.example` - Prod example
+- `infra/scripts/bootstrap.sh` - Backend setup script
+- `infra/scripts/setup-runner.sh` - Manual runner setup
+- `.github/workflows/infra.yml` - Infrastructure CI workflow
