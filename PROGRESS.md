@@ -1042,3 +1042,84 @@ cd crates/roea-ui && npm run test:e2e -- --grep "Performance"
 **Files Modified:**
 - `crates/roea-common/src/lib.rs` - Added security module export
 - `crates/roea-common/Cargo.toml` - Added regex-lite dependency
+
+---
+
+### Task Selection: THE-48 - Monitoring & Observability
+
+**Why Selected:**
+1. Medium priority DevOps task that builds on completed CI/CD infrastructure
+2. Enables production-ready error tracking and performance monitoring
+3. Provides visibility into CI/CD pipeline health
+4. Actionable code-based work that can be fully implemented
+5. Foundation for debugging issues in production
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+
+1. **Sentry Integration** (`crates/roea-agent/src/observability/sentry.rs`):
+   - `SentryConfig` builder for flexible configuration
+   - `init_sentry()` function with DSN validation
+   - `capture_error()` for error reporting
+   - `capture_message()` for event logging
+   - `add_breadcrumb()` for debugging context
+   - `start_transaction()` for performance monitoring
+   - `set_user_context()` for machine identification
+   - Default tags (app, platform, arch)
+   - Environment variable support (`SENTRY_DSN`, `SENTRY_ENVIRONMENT`)
+
+2. **Internal Metrics System** (`crates/roea-agent/src/observability/metrics.rs`):
+   - `Counter`: Monotonically increasing metrics
+   - `Gauge`: Metrics that can go up and down
+   - `Histogram`: Distribution tracking with buckets
+   - `Timer`: Convenience wrapper for duration measurement
+   - `MetricsRegistry`: Central registry for all metrics
+   - Thread-safe with atomic operations
+   - JSON-serializable snapshots
+
+   **Pre-defined Metrics:**
+   - `roea_processes_tracked_total`
+   - `roea_connections_tracked_total`
+   - `roea_file_ops_tracked_total`
+   - `roea_agents_detected_total`
+   - `roea_active_processes`
+   - `roea_active_connections`
+   - `roea_process_monitor_latency_ms`
+   - `roea_network_monitor_latency_ms`
+   - `roea_grpc_request_latency_ms`
+   - `roea_errors_total`
+
+3. **CI/CD Metrics Workflow** (`.github/workflows/metrics.yml`):
+   - Triggers on workflow completion
+   - Calculates build duration
+   - Weekly metrics summary (Monday 8 AM UTC)
+   - Failure alerting with consecutive failure detection
+   - Build time warnings (>30 minutes)
+   - Test flakiness detection (>20% threshold)
+
+   **Metrics Tracked:**
+   - Build success rate
+   - Build duration
+   - Workflow run counts
+   - Failure patterns
+
+4. **Monitoring Documentation** (`docs/monitoring.md`):
+   - Sentry setup guide
+   - Environment variable reference
+   - Internal metrics usage
+   - CI/CD metrics explanation
+   - Dashboard setup recommendations
+   - Troubleshooting guide
+
+**Files Created:**
+- `crates/roea-agent/src/observability/mod.rs` - Observability module
+- `crates/roea-agent/src/observability/sentry.rs` - Sentry integration
+- `crates/roea-agent/src/observability/metrics.rs` - Internal metrics
+- `.github/workflows/metrics.yml` - CI/CD metrics workflow
+- `docs/monitoring.md` - Monitoring guide
+
+**Files Modified:**
+- `Cargo.toml` - Added sentry dependency to workspace
+- `crates/roea-agent/Cargo.toml` - Added sentry dependency
+- `crates/roea-agent/src/lib.rs` - Exported observability module

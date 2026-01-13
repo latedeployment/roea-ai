@@ -1,0 +1,218 @@
+name: Metrics
+
+# Collect and report CI/CD metrics
+on:
+  workflow_run:
+    workflows: ["CI", "Nightly", "Release", "Security"]
+    types: [completed]
+  schedule:
+    # Run weekly metrics report on Monday at 8 AM UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  # Collect build and test metrics
+  collect-metrics:
+    name: Collect Metrics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get workflow run info
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "## Workflow Run Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow | ${{ github.event.workflow_run.name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ github.event.workflow_run.conclusion }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.event.workflow_run.id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.event.workflow_run.head_branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event.workflow_run.event }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Calculate duration
+          START="${{ github.event.workflow_run.run_started_at }}"
+          END="${{ github.event.workflow_run.updated_at }}"
+          START_TS=$(date -d "$START" +%s 2>/dev/null || echo "0")
+          END_TS=$(date -d "$END" +%s 2>/dev/null || echo "0")
+          if [ "$START_TS" != "0" ] && [ "$END_TS" != "0" ]; then
+            DURATION=$((END_TS - START_TS))
+            MINUTES=$((DURATION / 60))
+            SECONDS=$((DURATION % 60))
+            echo "| Duration | ${MINUTES}m ${SECONDS}s |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Generate weekly metrics report
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "## Weekly CI/CD Metrics Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get workflow runs from the past week
+          SINCE=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "### CI Workflow" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # CI workflow stats
+          CI_TOTAL=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?created=>$SINCE" --jq '.total_count' 2>/dev/null || echo "0")
+          CI_SUCCESS=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?created=>$SINCE&status=success" --jq '.total_count' 2>/dev/null || echo "0")
+          CI_FAILURE=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?created=>$SINCE&status=failure" --jq '.total_count' 2>/dev/null || echo "0")
+
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Runs | $CI_TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Successful | $CI_SUCCESS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | $CI_FAILURE |" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$CI_TOTAL" -gt 0 ]; then
+            SUCCESS_RATE=$((CI_SUCCESS * 100 / CI_TOTAL))
+            echo "| Success Rate | ${SUCCESS_RATE}% |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Nightly Workflow" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Nightly workflow stats
+          NIGHTLY_TOTAL=$(gh api "repos/${{ github.repository }}/actions/workflows/nightly.yml/runs?created=>$SINCE" --jq '.total_count' 2>/dev/null || echo "0")
+          NIGHTLY_SUCCESS=$(gh api "repos/${{ github.repository }}/actions/workflows/nightly.yml/runs?created=>$SINCE&status=success" --jq '.total_count' 2>/dev/null || echo "0")
+
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Runs | $NIGHTLY_TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Successful | $NIGHTLY_SUCCESS |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Workflow" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Security workflow stats
+          SEC_TOTAL=$(gh api "repos/${{ github.repository }}/actions/workflows/security.yml/runs?created=>$SINCE" --jq '.total_count' 2>/dev/null || echo "0")
+          SEC_SUCCESS=$(gh api "repos/${{ github.repository }}/actions/workflows/security.yml/runs?created=>$SINCE&status=success" --jq '.total_count' 2>/dev/null || echo "0")
+
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Runs | $SEC_TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Successful | $SEC_SUCCESS |" >> $GITHUB_STEP_SUMMARY
+
+  # Alert on failures
+  alert-on-failure:
+    name: Alert on Failure
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create failure summary
+        run: |
+          echo "## ⚠️ Workflow Failure Alert" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow | ${{ github.event.workflow_run.name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.event.workflow_run.head_branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.event.workflow_run.head_sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run URL | ${{ github.event.workflow_run.html_url }} |" >> $GITHUB_STEP_SUMMARY
+
+      # Create an issue for persistent failures (optional)
+      - name: Check for repeated failures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          WORKFLOW="${{ github.event.workflow_run.name }}"
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+
+          # Count recent failures (last 5 runs)
+          RECENT_FAILURES=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/${WORKFLOW// /%20}/runs?branch=$BRANCH&per_page=5" \
+            --jq '[.workflow_runs[] | select(.conclusion == "failure")] | length' 2>/dev/null || echo "0")
+
+          if [ "$RECENT_FAILURES" -ge 3 ]; then
+            echo "::warning::$RECENT_FAILURES of last 5 $WORKFLOW runs on $BRANCH have failed"
+          fi
+
+  # Build time tracking
+  track-build-times:
+    name: Track Build Times
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate build time
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          START="${{ github.event.workflow_run.run_started_at }}"
+          END="${{ github.event.workflow_run.updated_at }}"
+
+          START_TS=$(date -d "$START" +%s 2>/dev/null || echo "0")
+          END_TS=$(date -d "$END" +%s 2>/dev/null || echo "0")
+
+          if [ "$START_TS" != "0" ] && [ "$END_TS" != "0" ]; then
+            DURATION=$((END_TS - START_TS))
+
+            echo "## Build Time Metrics" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Workflow | Duration |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
+            echo "| ${{ github.event.workflow_run.name }} | ${DURATION}s |" >> $GITHUB_STEP_SUMMARY
+
+            # Warn if build time is too long
+            if [ "$DURATION" -gt 1800 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ Build took longer than 30 minutes!" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+  # Test flakiness detection
+  detect-flakiness:
+    name: Detect Flaky Tests
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Analyze test results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "## Test Flakiness Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get artifacts from recent workflow runs
+          RUNS=$(gh api "repos/${{ github.repository }}/actions/runs?status=completed&per_page=10" \
+            --jq '.workflow_runs[].id' 2>/dev/null || echo "")
+
+          TOTAL_RUNS=0
+          FAILED_RUNS=0
+
+          for RUN_ID in $RUNS; do
+            TOTAL_RUNS=$((TOTAL_RUNS + 1))
+            STATUS=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID" \
+              --jq '.conclusion' 2>/dev/null || echo "unknown")
+            if [ "$STATUS" = "failure" ]; then
+              FAILED_RUNS=$((FAILED_RUNS + 1))
+            fi
+          done
+
+          echo "Based on last $TOTAL_RUNS runs:" >> $GITHUB_STEP_SUMMARY
+          echo "- Failures: $FAILED_RUNS" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$TOTAL_RUNS" -gt 0 ]; then
+            FLAKINESS=$((FAILED_RUNS * 100 / TOTAL_RUNS))
+            echo "- Flakiness rate: ${FLAKINESS}%" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$FLAKINESS" -gt 20 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ High flakiness rate detected!" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
