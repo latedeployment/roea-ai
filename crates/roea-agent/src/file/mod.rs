@@ -4,6 +4,9 @@
 
 mod proc_fd;
 
+#[cfg(test)]
+mod tests;
+
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -111,7 +114,7 @@ impl FileMonitorService {
     }
 
     /// Check if a path is noise that should be filtered
-    fn is_noise_path(path: &str) -> bool {
+    pub(crate) fn is_noise_path(path: &str) -> bool {
         NOISE_PATTERNS.iter().any(|pattern| path.contains(pattern))
     }
 

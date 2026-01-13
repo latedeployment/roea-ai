@@ -396,3 +396,83 @@ INFO eBPF process monitoring available, using kernel tracepoints
    - IPv6 localhost parsing
 
 **Total: 49 unit tests covering all THE-38 requirements**
+
+---
+
+### Task Selection: THE-39 - Unit Tests - File Access Monitoring
+
+**Why Selected:**
+1. Continues THE-36 (QA Testing Platform Architecture) epic - Urgent priority
+2. File access monitoring is the third core component in the natural testing order
+3. Follows process and network tests as specified in the dependency chain
+4. Tests needed: open/read/write detection, directory traversal, symlinks, permission denied scenarios
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Created comprehensive test module in `crates/roea-agent/src/file/tests.rs`
+- Implemented MockFileMonitor backend for deterministic testing
+- Made is_noise_path function pub(crate) for testing
+
+**Test Coverage:**
+1. **File Operation Tests** (8 tests):
+   - Open, Read, Write, Delete, Rename, Create detection
+   - Filter by operation type
+   - Multiple operations on same file
+
+2. **Directory Traversal Tests** (5 tests):
+   - Filter by directory prefix
+   - Deep directory paths
+   - Root directory handling
+   - Hidden directories
+   - Recursive directory listing
+
+3. **Symlink Tests** (3 tests):
+   - Symlink path tracking
+   - Resolved symlink paths
+   - Relative symlink handling
+
+4. **Permission Denied Tests** (3 tests):
+   - Permission denied file tracking
+   - Protected system files
+   - Nonexistent file operations
+
+5. **High I/O Tests** (6 tests):
+   - npm install simulation
+   - 1000 file operations
+   - Rapid file churn
+   - Concurrent file access (4 threads)
+   - Many files per process
+   - Snapshot performance
+
+6. **Large File Tests** (3 tests):
+   - Large file paths
+   - Unicode file paths
+   - Special characters in paths
+
+7. **File Classification Tests** (7 tests):
+   - Source code, Config, Documentation
+   - Git files, Lock files, Build artifacts
+   - Other file types
+
+8. **Noise Filtering Tests** (2 tests):
+   - Noise path patterns
+   - Non-noise paths
+
+9. **Backend Trait Tests** (5 tests):
+   - Start/stop lifecycle
+   - Idempotent start
+   - Empty and populated snapshots
+   - Open files for PID
+
+10. **AI Agent Tests** (3 tests):
+    - AI agent file operations
+    - Multiple agents
+    - Sensitive file access
+
+11. **Edge Case Tests** (4 tests):
+    - Empty path, unique IDs
+    - Process ID zero
+    - Timestamp ordering
+
+**Total: 49 unit tests covering all THE-39 requirements**
