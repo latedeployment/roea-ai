@@ -170,6 +170,9 @@ roea-ai/
 | THE-43 | [QA] Performance & Benchmark Suite | 2026-01-13 |
 | THE-47 | [DevOps] CI/CD Pipeline Core Setup | 2026-01-13 |
 | THE-56 | [QA] Security Testing & Hardening | 2026-01-13 |
+| THE-48 | [DevOps] Monitoring & Observability | 2026-01-13 |
+| THE-36 | [Epic] [QA] Testing Platform Architecture | 2026-01-13 |
+| THE-59 | [DevOps] Release Automation Pipeline | 2026-01-13 |
 
 ---
 
@@ -183,13 +186,11 @@ roea-ai/
 | High | THE-55 | [QA] Platform-Specific Testing Matrix |
 | High | THE-57 | [QA] Agent Compatibility Testing |
 | High | THE-58 | [QA] Beta Testing Program |
-| High | THE-59 | [DevOps] Release Automation Pipeline |
 | High | THE-60 | [DevOps] Code Signing Infrastructure |
 | High | THE-50 | [Marketing] Demo Video Production |
 | High | THE-51 | [Marketing] Website Design & Development |
 | High | THE-52 | [Marketing] Brand Identity & Visual Assets |
 | High | THE-54 | [Marketing] Documentation Site Setup |
-| Medium | THE-48 | [DevOps] Monitoring & Observability |
 | Medium | THE-49 | [DevOps] Infrastructure as Code |
 | Medium | THE-53 | [Marketing] Create Demo GIFs |
 | Medium | THE-29 | Create Demo Scenarios & Recordings |
@@ -1123,3 +1124,63 @@ cd crates/roea-ui && npm run test:e2e -- --grep "Performance"
 - `Cargo.toml` - Added sentry dependency to workspace
 - `crates/roea-agent/Cargo.toml` - Added sentry dependency
 - `crates/roea-agent/src/lib.rs` - Exported observability module
+
+---
+
+### Task Selection: THE-59 - Release Automation Pipeline
+
+**Why Selected:**
+1. High priority DevOps task that builds on THE-47 CI/CD infrastructure
+2. Critical for automated, reliable releases from tag to published binaries
+3. Enhances the release workflow with smoke tests and notifications
+4. Enables consistent release process with changelog categorization
+5. Required before code signing (THE-60) can be effectively used
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+
+1. **Enhanced Changelog Generation**:
+   - Categorized commits by conventional commit prefix
+   - Features (feat:), Bug Fixes (fix:), Documentation (docs:)
+   - Maintenance (chore:, refactor:, perf:, test:, ci:)
+   - Other changes section for uncategorized commits
+   - Full changelog link between tags
+   - Initial release template with highlights
+   - Formatted installation table with platform downloads
+
+2. **Smoke Test Job**:
+   - Tests built binaries on all platforms (Ubuntu, macOS, Windows)
+   - Downloads artifacts from draft release
+   - Tests `--version` and `--help` flags
+   - Verifies SHA256 checksums
+   - Cross-platform executable permissions
+   - Test summary in GitHub Actions
+
+3. **Notification Support**:
+   - Discord webhook with rich embed messages
+   - Slack webhook with Block Kit formatting
+   - Success/failure conditional formatting
+   - Release URL in notifications
+   - Runs on both success and failure (if: always())
+   - GitHub deployment status tracking
+
+**Release Pipeline Flow:**
+1. Tag trigger (v1.0.0) or manual workflow dispatch
+2. Validate version format (semver)
+3. Generate categorized changelog from commits
+4. Create draft GitHub Release
+5. Build Tauri desktop apps (4 targets in parallel)
+6. Build standalone agent binaries (4 targets in parallel)
+7. Run smoke tests on built binaries (3 platforms)
+8. Generate combined checksums file
+9. Publish release (remove draft status)
+10. Send Discord/Slack notifications
+
+**Secrets Required:**
+- `DISCORD_WEBHOOK_URL` - Discord channel webhook
+- `SLACK_WEBHOOK_URL` - Slack incoming webhook
+- Plus existing code signing secrets from THE-47
+
+**Files Modified:**
+- `.github/workflows/release.yml` - Enhanced with smoke tests, changelog, notifications

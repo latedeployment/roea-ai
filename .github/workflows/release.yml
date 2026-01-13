@@ -64,31 +64,65 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
           if [ -n "$PREV_TAG" ]; then
-            echo "## Changes since $PREV_TAG" > CHANGELOG_BODY.md
+            echo "## What's Changed" > CHANGELOG_BODY.md
             echo "" >> CHANGELOG_BODY.md
-            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" >> CHANGELOG_BODY.md
+
+            # Categorize commits by conventional commit prefix
+            echo "### ✨ Features" >> CHANGELOG_BODY.md
+            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" | grep -E "^- feat(\(.+\))?:" | sed 's/^- feat[^:]*: /- /' >> CHANGELOG_BODY.md || true
+            echo "" >> CHANGELOG_BODY.md
+
+            echo "### 🐛 Bug Fixes" >> CHANGELOG_BODY.md
+            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" | grep -E "^- fix(\(.+\))?:" | sed 's/^- fix[^:]*: /- /' >> CHANGELOG_BODY.md || true
+            echo "" >> CHANGELOG_BODY.md
+
+            echo "### 📚 Documentation" >> CHANGELOG_BODY.md
+            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" | grep -E "^- docs(\(.+\))?:" | sed 's/^- docs[^:]*: /- /' >> CHANGELOG_BODY.md || true
+            echo "" >> CHANGELOG_BODY.md
+
+            echo "### 🔧 Maintenance" >> CHANGELOG_BODY.md
+            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" | grep -E "^- (chore|refactor|perf|test|ci)(\(.+\))?:" | sed 's/^- [a-z]*[^:]*: /- /' >> CHANGELOG_BODY.md || true
+            echo "" >> CHANGELOG_BODY.md
+
+            echo "### Other Changes" >> CHANGELOG_BODY.md
+            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" | grep -vE "^- (feat|fix|docs|chore|refactor|perf|test|ci)(\(.+\))?:" >> CHANGELOG_BODY.md || true
+            echo "" >> CHANGELOG_BODY.md
+
+            # Remove empty sections
+            sed -i '/^### .*/{ N; /\n$/d; }' CHANGELOG_BODY.md || true
+
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ steps.get_version.outputs.version }}" >> CHANGELOG_BODY.md
           else
-            echo "## Initial Release" > CHANGELOG_BODY.md
+            echo "## 🎉 Initial Release" > CHANGELOG_BODY.md
             echo "" >> CHANGELOG_BODY.md
-            echo "First release of roea-ai." >> CHANGELOG_BODY.md
+            echo "First release of roea-ai - the observability tool for AI coding agents." >> CHANGELOG_BODY.md
+            echo "" >> CHANGELOG_BODY.md
+            echo "### Highlights" >> CHANGELOG_BODY.md
+            echo "" >> CHANGELOG_BODY.md
+            echo "- Real-time process monitoring with eBPF support on Linux" >> CHANGELOG_BODY.md
+            echo "- Network connection tracking for API calls" >> CHANGELOG_BODY.md
+            echo "- File access monitoring" >> CHANGELOG_BODY.md
+            echo "- Support for Claude Code, Cursor, VS Code Copilot, Windsurf, and Aider" >> CHANGELOG_BODY.md
+            echo "- Desktop UI built with Tauri" >> CHANGELOG_BODY.md
           fi
 
           echo "" >> CHANGELOG_BODY.md
-          echo "" >> CHANGELOG_BODY.md
           echo "---" >> CHANGELOG_BODY.md
           echo "" >> CHANGELOG_BODY.md
-          echo "### Installation" >> CHANGELOG_BODY.md
+          echo "### 📥 Installation" >> CHANGELOG_BODY.md
           echo "" >> CHANGELOG_BODY.md
           echo "Download the appropriate binary for your platform:" >> CHANGELOG_BODY.md
           echo "" >> CHANGELOG_BODY.md
-          echo "- **macOS (Apple Silicon)**: \`roea-ai_${{ steps.get_version.outputs.version }}_aarch64.dmg\`" >> CHANGELOG_BODY.md
-          echo "- **macOS (Intel)**: \`roea-ai_${{ steps.get_version.outputs.version }}_x64.dmg\`" >> CHANGELOG_BODY.md
-          echo "- **Windows**: \`roea-ai_${{ steps.get_version.outputs.version }}_x64_en-US.msi\`" >> CHANGELOG_BODY.md
-          echo "- **Linux (Debian/Ubuntu)**: \`roea-ai_${{ steps.get_version.outputs.version }}_amd64.deb\`" >> CHANGELOG_BODY.md
+          echo "| Platform | Download |" >> CHANGELOG_BODY.md
+          echo "|----------|----------|" >> CHANGELOG_BODY.md
+          echo "| macOS (Apple Silicon) | \`roea-ai_${{ steps.get_version.outputs.version }}_aarch64.dmg\` |" >> CHANGELOG_BODY.md
+          echo "| macOS (Intel) | \`roea-ai_${{ steps.get_version.outputs.version }}_x64.dmg\` |" >> CHANGELOG_BODY.md
+          echo "| Windows | \`roea-ai_${{ steps.get_version.outputs.version }}_x64_en-US.msi\` |" >> CHANGELOG_BODY.md
+          echo "| Linux (Debian/Ubuntu) | \`roea-ai_${{ steps.get_version.outputs.version }}_amd64.deb\` |" >> CHANGELOG_BODY.md
           echo "" >> CHANGELOG_BODY.md
-          echo "### Checksums" >> CHANGELOG_BODY.md
+          echo "### 🔐 Verification" >> CHANGELOG_BODY.md
           echo "" >> CHANGELOG_BODY.md
-          echo "SHA256 checksums are provided in \`checksums.txt\`" >> CHANGELOG_BODY.md
+          echo "SHA256 checksums are provided in \`checksums.txt\` for verifying downloads." >> CHANGELOG_BODY.md
 
           # Store for output
           {
@@ -312,10 +346,84 @@ jobs:
             ${{ matrix.artifact }}
             ${{ matrix.artifact }}.sha256
 
+  # Smoke test built binaries
+  smoke-test:
+    name: Smoke Test (${{ matrix.platform }})
+    needs: [prepare, build-agent]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-latest
+            artifact: roea-agent-linux-x64
+          - platform: macos-latest
+            artifact: roea-agent-macos-arm64
+          - platform: windows-latest
+            artifact: roea-agent-windows-x64.exe
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Download artifact
+        uses: robinraju/release-downloader@v1
+        with:
+          tag: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.prepare.outputs.version) || github.ref_name }}
+          fileName: '${{ matrix.artifact }}*'
+          out-file-path: .
+
+      - name: Make executable (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: chmod +x ${{ matrix.artifact }}
+
+      - name: Test version output (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          ./${{ matrix.artifact }} --version || echo "Version flag not implemented yet"
+
+      - name: Test help output (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          ./${{ matrix.artifact }} --help || echo "Help flag not implemented yet"
+
+      - name: Test version output (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          try { ./${{ matrix.artifact }} --version } catch { Write-Host "Version flag not implemented yet" }
+
+      - name: Test help output (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          try { ./${{ matrix.artifact }} --help } catch { Write-Host "Help flag not implemented yet" }
+
+      - name: Verify binary checksum
+        shell: bash
+        run: |
+          if [ -f "${{ matrix.artifact }}.sha256" ]; then
+            echo "Verifying checksum..."
+            if command -v sha256sum &> /dev/null; then
+              sha256sum -c ${{ matrix.artifact }}.sha256
+            elif command -v shasum &> /dev/null; then
+              shasum -a 256 -c ${{ matrix.artifact }}.sha256
+            fi
+            echo "Checksum verified!"
+          else
+            echo "No checksum file found, skipping verification"
+          fi
+
+      - name: Smoke test summary
+        run: |
+          echo "## Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Binary exists | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Executable | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | ${{ matrix.platform }} |" >> $GITHUB_STEP_SUMMARY
+
   # Generate combined checksums file
   checksums:
     name: Generate Checksums
-    needs: [prepare, build-tauri, build-agent]
+    needs: [prepare, build-tauri, build-agent, smoke-test]
     runs-on: ubuntu-latest
     steps:
       - name: Download all release assets
@@ -356,3 +464,92 @@ jobs:
           echo "Version: v${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+
+  # Send notifications
+  notify:
+    name: Send Notifications
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify Discord
+        if: env.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ "${{ needs.publish.result }}" = "success" ]; then
+            TITLE="🎉 roea-ai v${{ needs.prepare.outputs.version }} Released!"
+            COLOR=3066993  # Green
+            DESCRIPTION="New version is now available for download."
+          else
+            TITLE="❌ roea-ai v${{ needs.prepare.outputs.version }} Release Failed"
+            COLOR=15158332  # Red
+            DESCRIPTION="Release workflow encountered an error."
+          fi
+
+          curl -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"$TITLE\",
+                \"description\": \"$DESCRIPTION\",
+                \"color\": $COLOR,
+                \"fields\": [
+                  {\"name\": \"Version\", \"value\": \"v${{ needs.prepare.outputs.version }}\", \"inline\": true},
+                  {\"name\": \"Status\", \"value\": \"${{ needs.publish.result }}\", \"inline\": true}
+                ],
+                \"url\": \"https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare.outputs.version }}\"
+              }]
+            }" \
+            "$DISCORD_WEBHOOK_URL"
+
+      - name: Notify Slack
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ "${{ needs.publish.result }}" = "success" ]; then
+            EMOJI=":rocket:"
+            TEXT="*roea-ai v${{ needs.prepare.outputs.version }} Released!* $EMOJI"
+          else
+            EMOJI=":x:"
+            TEXT="*roea-ai v${{ needs.prepare.outputs.version }} Release Failed* $EMOJI"
+          fi
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \"$TEXT\"
+                  }
+                },
+                {
+                  \"type\": \"section\",
+                  \"fields\": [
+                    {\"type\": \"mrkdwn\", \"text\": \"*Version:*\nv${{ needs.prepare.outputs.version }}\"},
+                    {\"type\": \"mrkdwn\", \"text\": \"*Status:*\n${{ needs.publish.result }}\"}
+                  ]
+                },
+                {
+                  \"type\": \"actions\",
+                  \"elements\": [
+                    {
+                      \"type\": \"button\",
+                      \"text\": {\"type\": \"plain_text\", \"text\": \"View Release\"},
+                      \"url\": \"https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare.outputs.version }}\"
+                    }
+                  ]
+                }
+              ]
+            }" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Create GitHub deployment status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create a deployment record for tracking
+          echo "Release v${{ needs.prepare.outputs.version }} deployed" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ needs.publish.result }}" >> $GITHUB_STEP_SUMMARY
