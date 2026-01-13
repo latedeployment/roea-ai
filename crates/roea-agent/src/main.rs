@@ -7,6 +7,7 @@ mod file;
 mod grpc;
 mod monitor;
 mod network;
+mod osquery;
 mod storage;
 mod telemetry;
 
