@@ -18,6 +18,7 @@ use crate::file::FileMonitorService;
 use crate::monitor::ProcessMonitorService;
 use crate::network::NetworkMonitorService;
 use crate::storage::Storage;
+use crate::telemetry::TelemetryService;
 
 // Include generated protobuf code
 pub mod proto {
@@ -35,10 +36,11 @@ pub struct AgentState {
     pub storage: Arc<Storage>,
     pub signature_matcher: SignatureMatcher,
     pub start_time: Instant,
+    pub telemetry: Option<Arc<TelemetryService>>,
 }
 
 impl AgentState {
-    pub fn new(storage: Arc<Storage>) -> Self {
+    pub fn new(storage: Arc<Storage>, telemetry: Option<Arc<TelemetryService>>) -> Self {
         let mut signature_matcher = SignatureMatcher::new();
         if let Err(e) = signature_matcher.load(default_signatures()) {
             tracing::warn!("Failed to load default signatures: {}", e);
@@ -51,6 +53,7 @@ impl AgentState {
             storage,
             signature_matcher,
             start_time: Instant::now(),
+            telemetry,
         }
     }
 }

@@ -8,6 +8,7 @@ mod grpc;
 mod monitor;
 mod network;
 mod storage;
+mod telemetry;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -36,6 +37,10 @@ struct Config {
     retention_hours: u32,
     /// Log level
     log_level: String,
+    /// OTLP endpoint for telemetry export
+    otlp_endpoint: Option<String>,
+    /// Enable telemetry
+    telemetry_enabled: bool,
 }
 
 impl Default for Config {
@@ -48,6 +53,8 @@ impl Default for Config {
             db_path,
             retention_hours: 24,
             log_level: "info".to_string(),
+            otlp_endpoint: None,
+            telemetry_enabled: true,
         }
     }
 }
@@ -75,6 +82,14 @@ impl Config {
 
         if let Ok(level) = std::env::var("ROEA_LOG_LEVEL") {
             config.log_level = level;
+        }
+
+        if let Ok(endpoint) = std::env::var("ROEA_OTLP_ENDPOINT") {
+            config.otlp_endpoint = Some(endpoint);
+        }
+
+        if let Ok(enabled) = std::env::var("ROEA_TELEMETRY_ENABLED") {
+            config.telemetry_enabled = enabled.parse().unwrap_or(true);
         }
 
         config
@@ -111,8 +126,32 @@ async fn main() -> Result<()> {
 
     tracing::info!("Storage initialized");
 
+    // Initialize telemetry if enabled
+    let mut telemetry_service = None;
+    if config.telemetry_enabled {
+        let telemetry_config = telemetry::TelemetryConfig {
+            service_name: "roea-agent".to_string(),
+            service_version: env!("CARGO_PKG_VERSION").to_string(),
+            otlp_endpoint: config.otlp_endpoint.clone(),
+            console_export: false,
+            batch_delay_ms: 5000,
+            max_batch_size: 512,
+        };
+
+        let mut service = telemetry::TelemetryService::new(telemetry_config);
+        if let Err(e) = service.init().await {
+            tracing::warn!("Failed to initialize telemetry: {} (continuing without it)", e);
+        } else {
+            tracing::info!("OpenTelemetry telemetry initialized");
+            if config.otlp_endpoint.is_some() {
+                tracing::info!("OTLP export enabled to: {}", config.otlp_endpoint.as_ref().unwrap());
+            }
+            telemetry_service = Some(Arc::new(service));
+        }
+    }
+
     // Create agent state
-    let state = Arc::new(RwLock::new(AgentState::new(storage.clone())));
+    let state = Arc::new(RwLock::new(AgentState::new(storage.clone(), telemetry_service.clone())));
 
     // Start process monitor
     {

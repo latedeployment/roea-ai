@@ -66,6 +66,12 @@ parking_lot = "0.12"
 futures-core = "0.3"
 tokio-stream = "0.1"
 
+# OpenTelemetry
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["http-proto", "reqwest-client"] }
+opentelemetry-semantic-conventions = "0.27"
+
 [profile.release]
 lto = true
 codegen-units = 1

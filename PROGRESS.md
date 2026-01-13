@@ -13,6 +13,9 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 - THE-26: Local Storage Layer (DuckDB)
 - THE-32: File Access Monitoring System
 - THE-33: Network Connection Tracking
+- THE-30: Cross-Platform Build & Distribution Pipeline
+- THE-35: Search & Filtering System
+- THE-27: Process Tree Graph Visualization
 
 ---
 
@@ -20,6 +23,7 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 
 | Commit | Message |
 |--------|---------|
+| 5020aae | feat: Enhanced process tree visualization with multiple layouts |
 | 9f0c0f7 | feat: Add search and filtering system for process list |
 | 3723d19 | ci: Add GitHub Actions CI/CD pipeline |
 | e40a42d | feat: Implement core roea-ai monitoring infrastructure |
@@ -134,6 +138,7 @@ roea-ai/
 | THE-33 | Network Connection Tracking | 2026-01-13 |
 | THE-30 | Cross-Platform Build & Distribution Pipeline | 2026-01-13 |
 | THE-35 | Search & Filtering System | 2026-01-13 |
+| THE-27 | Process Tree Graph Visualization | 2026-01-13 |
 
 ---
 
@@ -141,7 +146,6 @@ roea-ai/
 
 | Priority | Task ID | Title |
 |----------|---------|-------|
-| High | THE-27 | Process Tree Graph Visualization (enhanced) |
 | Medium | THE-29 | Create Demo Scenarios & Recordings |
 | Low | THE-34 | [Future] Enterprise Features Planning |
 

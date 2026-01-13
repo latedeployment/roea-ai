@@ -52,6 +52,12 @@ futures-core = { workspace = true }
 tokio-stream = { workspace = true }
 async-stream = "0.3"
 
+# OpenTelemetry
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
+
 # Unix-specific
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
