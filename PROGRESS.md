@@ -476,3 +476,76 @@ INFO eBPF process monitoring available, using kernel tracepoints
     - Timestamp ordering
 
 **Total: 49 unit tests covering all THE-39 requirements**
+
+---
+
+### Task Selection: THE-40 - Unit Tests - Agent Signature Matching
+
+**Why Selected:**
+1. Continues THE-36 (QA Testing Platform Architecture) epic - Urgent priority
+2. Agent signatures are the core detection mechanism for identifying AI coding agents
+3. Follows process/network/file tests in the dependency chain
+4. Tests needed: exact process name matching, regex patterns, command line parsing, version detection
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Expanded test module in `crates/roea-common/src/signatures.rs`
+- Created test fixtures for mock processes with cmdline and exe_path
+- Comprehensive coverage of all THE-40 requirements
+
+**Test Coverage:**
+1. **Basic Signature Matching** (1 test):
+   - Full round-trip matching verification
+
+2. **Exact Process Name Matching** (6 tests):
+   - Claude, Aider, Windsurf name matching
+   - Case-insensitive matching
+   - Cursor helper processes
+   - No match for unknown processes
+
+3. **Regex Pattern Matching** (7 tests):
+   - Claude chat/code/api/flags patterns
+   - Aider command patterns
+   - Copilot extension patterns
+   - Continue.dev patterns
+
+4. **Executable Path Matching** (3 tests):
+   - Cursor macOS app bundle path
+   - Cursor Windows exe path
+   - Windsurf Linux path
+
+5. **Command Line Argument Parsing** (4 tests):
+   - Arguments with spaces and flags
+   - No partial matches
+   - Empty and None cmdline handling
+
+6. **Version Detection** (2 tests):
+   - Version flags in cmdline
+   - Versioned binary names
+
+7. **Child Process Inheritance** (2 tests):
+   - Child tracking flag verification
+   - Parent hints validation
+
+8. **Network Endpoints** (3 tests):
+   - Claude, Cursor, Copilot endpoints
+
+9. **Edge Cases** (10 tests):
+   - Empty matcher
+   - Invalid regex patterns
+   - Get by name
+   - Add single signature
+   - Signatures iterator
+   - Renamed binaries
+   - Wrapped scripts
+   - First match wins
+   - Display name preservation
+   - Icon paths validation
+   - Default signatures count
+
+10. **Serialization** (2 tests):
+    - Full signature round-trip
+    - Minimal signature deserialization
+
+**Total: 40 unit tests covering all THE-40 requirements**

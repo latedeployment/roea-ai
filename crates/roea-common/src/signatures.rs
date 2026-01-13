@@ -383,6 +383,46 @@ pub fn default_signatures() -> Vec<AgentSignature> {
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Test Fixtures
+    // ========================================================================
+
+    /// Create a mock process fixture
+    fn create_process(pid: u32, name: &str) -> ProcessInfo {
+        ProcessInfo::new(pid, name.to_string())
+    }
+
+    /// Create a mock process with cmdline
+    fn create_process_with_cmdline(pid: u32, name: &str, cmdline: &str) -> ProcessInfo {
+        let mut process = ProcessInfo::new(pid, name.to_string());
+        process.cmdline = Some(cmdline.to_string());
+        process
+    }
+
+    /// Create a mock process with exe path
+    fn create_process_with_exe(pid: u32, name: &str, exe_path: &str) -> ProcessInfo {
+        let mut process = ProcessInfo::new(pid, name.to_string());
+        process.exe_path = Some(exe_path.to_string());
+        process
+    }
+
+    /// Create a full mock process
+    fn create_full_process(
+        pid: u32,
+        name: &str,
+        cmdline: Option<&str>,
+        exe_path: Option<&str>,
+    ) -> ProcessInfo {
+        let mut process = ProcessInfo::new(pid, name.to_string());
+        process.cmdline = cmdline.map(|s| s.to_string());
+        process.exe_path = exe_path.map(|s| s.to_string());
+        process
+    }
+
+    // ========================================================================
+    // Test Module: Basic Signature Matching
+    // ========================================================================
+
     #[test]
     fn test_signature_matching() {
         let mut matcher = SignatureMatcher::new();
@@ -404,5 +444,568 @@ mod tests {
         // Test non-matching process
         let random_process = ProcessInfo::new(9999, "firefox".to_string());
         assert_eq!(matcher.match_process(&random_process), None);
+    }
+
+    // ========================================================================
+    // Test Module: Exact Process Name Matching
+    // ========================================================================
+
+    #[test]
+    fn test_exact_process_name_claude() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process(1000, "claude");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_exact_process_name_case_insensitive() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        // Cursor should match case-insensitively
+        let process1 = create_process(1000, "Cursor");
+        let process2 = create_process(1001, "cursor");
+        let process3 = create_process(1002, "CURSOR");
+
+        assert_eq!(matcher.match_process(&process1), Some("cursor"));
+        assert_eq!(matcher.match_process(&process2), Some("cursor"));
+        assert_eq!(matcher.match_process(&process3), Some("cursor"));
+    }
+
+    #[test]
+    fn test_exact_process_name_aider() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process(1000, "aider");
+        assert_eq!(matcher.match_process(&process), Some("aider"));
+    }
+
+    #[test]
+    fn test_exact_process_name_windsurf() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process1 = create_process(1000, "Windsurf");
+        let process2 = create_process(1001, "windsurf");
+
+        assert_eq!(matcher.match_process(&process1), Some("windsurf"));
+        assert_eq!(matcher.match_process(&process2), Some("windsurf"));
+    }
+
+    #[test]
+    fn test_cursor_helper_processes() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let helper = create_process(1000, "Cursor Helper");
+        let renderer = create_process(1001, "Cursor Helper (Renderer)");
+
+        assert_eq!(matcher.match_process(&helper), Some("cursor"));
+        assert_eq!(matcher.match_process(&renderer), Some("cursor"));
+    }
+
+    #[test]
+    fn test_no_match_for_unknown_process() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let processes = vec![
+            create_process(1, "firefox"),
+            create_process(2, "chrome"),
+            create_process(3, "bash"),
+            create_process(4, "node"),
+            create_process(5, "python"),
+        ];
+
+        for process in processes {
+            assert_eq!(
+                matcher.match_process(&process),
+                None,
+                "Should not match: {}",
+                process.name
+            );
+        }
+    }
+
+    // ========================================================================
+    // Test Module: Regex Pattern Matching
+    // ========================================================================
+
+    #[test]
+    fn test_command_regex_claude_chat() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "node", "claude chat");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_command_regex_claude_code() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "node", "claude code --help");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_command_regex_claude_with_flags() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "node", "claude --version");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_command_regex_claude_api() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "node", "claude api test");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_command_regex_aider() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "python", "aider --model gpt-4");
+        assert_eq!(matcher.match_process(&process), Some("aider"));
+    }
+
+    #[test]
+    fn test_command_regex_copilot() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "node", "github.copilot extension");
+        assert_eq!(matcher.match_process(&process), Some("copilot"));
+    }
+
+    #[test]
+    fn test_command_regex_continue_dev() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "node", "continue.dev server");
+        assert_eq!(matcher.match_process(&process), Some("continue_dev"));
+    }
+
+    // ========================================================================
+    // Test Module: Executable Path Matching
+    // ========================================================================
+
+    #[test]
+    fn test_exe_path_cursor_macos() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_exe(
+            1000,
+            "Cursor",
+            "/Applications/Cursor.app/Contents/MacOS/Cursor",
+        );
+        assert_eq!(matcher.match_process(&process), Some("cursor"));
+    }
+
+    #[test]
+    fn test_exe_path_cursor_windows() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_exe(
+            1000,
+            "cursor",
+            "C:\\Users\\user\\AppData\\Local\\Programs\\cursor\\cursor.exe",
+        );
+        assert_eq!(matcher.match_process(&process), Some("cursor"));
+    }
+
+    #[test]
+    fn test_exe_path_windsurf() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_exe(
+            1000,
+            "windsurf",
+            "/opt/windsurf/Windsurf",
+        );
+        assert_eq!(matcher.match_process(&process), Some("windsurf"));
+    }
+
+    // ========================================================================
+    // Test Module: Command Line Argument Parsing
+    // ========================================================================
+
+    #[test]
+    fn test_cmdline_with_arguments() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let variations = vec![
+            "claude chat --help",
+            "claude   chat",  // Multiple spaces
+            "claude code fix",
+            "claude --verbose api",
+        ];
+
+        for cmdline in variations {
+            let process = create_process_with_cmdline(1000, "node", cmdline);
+            assert_eq!(
+                matcher.match_process(&process),
+                Some("claude_code"),
+                "Should match: {}",
+                cmdline
+            );
+        }
+    }
+
+    #[test]
+    fn test_cmdline_no_match_partial() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        // "claudeX" should not match "claude"
+        let process = create_process_with_cmdline(1000, "node", "claudeX chat");
+        assert_eq!(matcher.match_process(&process), None);
+    }
+
+    #[test]
+    fn test_cmdline_empty() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let mut process = create_process(1000, "random");
+        process.cmdline = Some("".to_string());
+        assert_eq!(matcher.match_process(&process), None);
+    }
+
+    #[test]
+    fn test_cmdline_none() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process(1000, "random");
+        assert_eq!(matcher.match_process(&process), None);
+    }
+
+    // ========================================================================
+    // Test Module: Version Detection
+    // ========================================================================
+
+    #[test]
+    fn test_version_in_cmdline() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        // Version flags should still match
+        let process = create_process_with_cmdline(1000, "node", "claude --version");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_versioned_binary_name() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        // "aider" exact name should match
+        let process = create_process(1000, "aider");
+        assert_eq!(matcher.match_process(&process), Some("aider"));
+    }
+
+    // ========================================================================
+    // Test Module: Child Process Inheritance
+    // ========================================================================
+
+    #[test]
+    fn test_child_process_tracking_flag() {
+        let signatures = default_signatures();
+
+        let claude = signatures.iter().find(|s| s.name == "claude_code").unwrap();
+        assert!(claude.child_process_tracking);
+
+        let cursor = signatures.iter().find(|s| s.name == "cursor").unwrap();
+        assert!(cursor.child_process_tracking);
+
+        let copilot = signatures.iter().find(|s| s.name == "copilot").unwrap();
+        assert!(!copilot.child_process_tracking);
+    }
+
+    #[test]
+    fn test_parent_hints() {
+        let signatures = default_signatures();
+
+        let claude = signatures.iter().find(|s| s.name == "claude_code").unwrap();
+        assert!(claude.detection.parent_hints.contains(&"bash".to_string()));
+        assert!(claude.detection.parent_hints.contains(&"zsh".to_string()));
+
+        let aider = signatures.iter().find(|s| s.name == "aider").unwrap();
+        assert!(aider.detection.parent_hints.contains(&"python".to_string()));
+    }
+
+    // ========================================================================
+    // Test Module: Network Endpoints
+    // ========================================================================
+
+    #[test]
+    fn test_network_endpoints_claude() {
+        let signatures = default_signatures();
+        let claude = signatures.iter().find(|s| s.name == "claude_code").unwrap();
+
+        assert!(claude.network_endpoints.expected.contains(&"api.anthropic.com".to_string()));
+        assert!(!claude.network_endpoints.suspicious_if_not_in_list);
+    }
+
+    #[test]
+    fn test_network_endpoints_cursor() {
+        let signatures = default_signatures();
+        let cursor = signatures.iter().find(|s| s.name == "cursor").unwrap();
+
+        assert!(cursor.network_endpoints.expected.contains(&"api.cursor.sh".to_string()));
+        assert!(cursor.network_endpoints.expected.contains(&"api.openai.com".to_string()));
+    }
+
+    #[test]
+    fn test_network_endpoints_copilot() {
+        let signatures = default_signatures();
+        let copilot = signatures.iter().find(|s| s.name == "copilot").unwrap();
+
+        assert!(copilot.network_endpoints.expected.contains(&"api.github.com".to_string()));
+    }
+
+    // ========================================================================
+    // Test Module: Edge Cases
+    // ========================================================================
+
+    #[test]
+    fn test_empty_matcher() {
+        let matcher = SignatureMatcher::new();
+        let process = create_process(1000, "claude");
+        assert_eq!(matcher.match_process(&process), None);
+    }
+
+    #[test]
+    fn test_invalid_regex_pattern() {
+        let invalid_sig = AgentSignature {
+            name: "invalid".to_string(),
+            display_name: "Invalid".to_string(),
+            icon: None,
+            detection: DetectionRules {
+                process_names: vec![],
+                command_patterns: vec![CommandPattern {
+                    regex: "[invalid(regex".to_string(), // Invalid regex
+                }],
+                exe_patterns: vec![],
+                parent_hints: vec![],
+            },
+            child_process_tracking: false,
+            network_endpoints: NetworkEndpoints::default(),
+        };
+
+        let result = CompiledSignature::new(invalid_sig);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_signature_by_name() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let claude = matcher.get("claude_code");
+        assert!(claude.is_some());
+        assert_eq!(claude.unwrap().display_name, "Claude Code");
+
+        let nonexistent = matcher.get("nonexistent");
+        assert!(nonexistent.is_none());
+    }
+
+    #[test]
+    fn test_add_single_signature() {
+        let mut matcher = SignatureMatcher::new();
+
+        let custom_sig = AgentSignature {
+            name: "custom_agent".to_string(),
+            display_name: "Custom Agent".to_string(),
+            icon: None,
+            detection: DetectionRules {
+                process_names: vec!["custom".to_string()],
+                command_patterns: vec![],
+                exe_patterns: vec![],
+                parent_hints: vec![],
+            },
+            child_process_tracking: false,
+            network_endpoints: NetworkEndpoints::default(),
+        };
+
+        matcher.add(custom_sig).unwrap();
+
+        let process = create_process(1000, "custom");
+        assert_eq!(matcher.match_process(&process), Some("custom_agent"));
+    }
+
+    #[test]
+    fn test_signatures_iterator() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let names: Vec<&str> = matcher.signatures().map(|s| s.name.as_str()).collect();
+
+        assert!(names.contains(&"claude_code"));
+        assert!(names.contains(&"cursor"));
+        assert!(names.contains(&"aider"));
+    }
+
+    #[test]
+    fn test_renamed_binary() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        // If someone renames "claude" to "my-claude", process name won't match
+        // But if cmdline contains the pattern, it should still match
+        let process = create_process_with_cmdline(1000, "my-claude", "claude chat");
+        assert_eq!(matcher.match_process(&process), Some("claude_code"));
+    }
+
+    #[test]
+    fn test_wrapped_script() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        // Python wrapper script running aider
+        let process = create_process_with_cmdline(
+            1000,
+            "python3",
+            "/usr/bin/aider --model anthropic/claude-3",
+        );
+        assert_eq!(matcher.match_process(&process), Some("aider"));
+    }
+
+    #[test]
+    fn test_first_match_wins() {
+        let mut matcher = SignatureMatcher::new();
+
+        // Add two signatures that could both match
+        let sig1 = AgentSignature {
+            name: "first".to_string(),
+            display_name: "First".to_string(),
+            icon: None,
+            detection: DetectionRules {
+                process_names: vec!["test".to_string()],
+                command_patterns: vec![],
+                exe_patterns: vec![],
+                parent_hints: vec![],
+            },
+            child_process_tracking: false,
+            network_endpoints: NetworkEndpoints::default(),
+        };
+
+        let sig2 = AgentSignature {
+            name: "second".to_string(),
+            display_name: "Second".to_string(),
+            icon: None,
+            detection: DetectionRules {
+                process_names: vec!["test".to_string()],
+                command_patterns: vec![],
+                exe_patterns: vec![],
+                parent_hints: vec![],
+            },
+            child_process_tracking: false,
+            network_endpoints: NetworkEndpoints::default(),
+        };
+
+        matcher.add(sig1).unwrap();
+        matcher.add(sig2).unwrap();
+
+        let process = create_process(1000, "test");
+        // First signature added should win
+        assert_eq!(matcher.match_process(&process), Some("first"));
+    }
+
+    #[test]
+    fn test_display_name_preservation() {
+        let signatures = default_signatures();
+
+        let claude = signatures.iter().find(|s| s.name == "claude_code").unwrap();
+        assert_eq!(claude.display_name, "Claude Code");
+
+        let cursor = signatures.iter().find(|s| s.name == "cursor").unwrap();
+        assert_eq!(cursor.display_name, "Cursor");
+
+        let copilot = signatures.iter().find(|s| s.name == "copilot").unwrap();
+        assert_eq!(copilot.display_name, "GitHub Copilot");
+    }
+
+    #[test]
+    fn test_icon_paths() {
+        let signatures = default_signatures();
+
+        for sig in &signatures {
+            if let Some(ref icon) = sig.icon {
+                assert!(icon.ends_with(".svg"), "Icon should be SVG: {}", icon);
+            }
+        }
+    }
+
+    #[test]
+    fn test_default_signatures_count() {
+        let signatures = default_signatures();
+        // Should have at least the core agents
+        assert!(signatures.len() >= 4, "Should have at least 4 default signatures");
+    }
+
+    // ========================================================================
+    // Test Module: Serialization/Deserialization
+    // ========================================================================
+
+    #[test]
+    fn test_signature_serialization() {
+        let sig = AgentSignature {
+            name: "test".to_string(),
+            display_name: "Test Agent".to_string(),
+            icon: Some("test.svg".to_string()),
+            detection: DetectionRules {
+                process_names: vec!["test".to_string()],
+                command_patterns: vec![CommandPattern {
+                    regex: "test.*".to_string(),
+                }],
+                exe_patterns: vec![],
+                parent_hints: vec!["bash".to_string()],
+            },
+            child_process_tracking: true,
+            network_endpoints: NetworkEndpoints {
+                expected: vec!["api.test.com".to_string()],
+                suspicious_if_not_in_list: true,
+            },
+        };
+
+        // Should serialize without panic
+        let json = serde_json::to_string(&sig).unwrap();
+        assert!(json.contains("test"));
+
+        // Should deserialize back
+        let deserialized: AgentSignature = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "test");
+        assert_eq!(deserialized.detection.process_names.len(), 1);
+    }
+
+    #[test]
+    fn test_minimal_signature_deserialization() {
+        let json = r#"{
+            "name": "minimal",
+            "display_name": "Minimal",
+            "detection": {}
+        }"#;
+
+        let sig: AgentSignature = serde_json::from_str(json).unwrap();
+        assert_eq!(sig.name, "minimal");
+        assert!(sig.detection.process_names.is_empty());
+        assert!(!sig.child_process_tracking);
     }
 }
