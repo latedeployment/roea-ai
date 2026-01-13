@@ -45,8 +45,15 @@ use process_monitor_skel::*;
 /// Event types from BPF program
 const EVENT_PROCESS_EXEC: u32 = 1;
 const EVENT_PROCESS_EXIT: u32 = 2;
+const EVENT_NETWORK_CONNECT: u32 = 3;
+const EVENT_FILE_OPEN: u32 = 4;
 
-/// BPF event structure (must match C definition)
+/// Address families
+const AF_UNIX: u16 = 1;
+const AF_INET: u16 = 2;
+const AF_INET6: u16 = 10;
+
+/// BPF process event structure (must match C definition)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct BpfProcessEvent {
@@ -59,6 +66,35 @@ struct BpfProcessEvent {
     comm: [u8; 256],
     filename: [u8; 256],
     exit_code: i32,
+}
+
+/// BPF network event structure (must match C definition)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct BpfNetworkEvent {
+    event_type: u32,
+    pid: u32,
+    uid: u32,
+    timestamp_ns: u64,
+    comm: [u8; 256],
+    family: u16,
+    port: u16,
+    addr_v4: u32,
+    addr_v6: [u8; 16],
+}
+
+/// BPF file event structure (must match C definition)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct BpfFileEvent {
+    event_type: u32,
+    pid: u32,
+    uid: u32,
+    timestamp_ns: u64,
+    comm: [u8; 256],
+    path: [u8; 256],
+    flags: i32,
+    dirfd: i32,
 }
 
 /// Errors from eBPF monitor
@@ -163,15 +199,18 @@ impl EbpfProcessMonitor {
         self.event_tx.subscribe()
     }
 
-    /// Poll events from BPF ring buffer
+    /// Poll events from BPF ring buffers (process, network, file)
     fn poll_events(
         mut skel: ProcessMonitorSkel<'static>,
         processes: Arc<RwLock<HashMap<u32, ProcessInfo>>>,
         event_tx: broadcast::Sender<ProcessEvent>,
     ) {
-        let process_event_callback = |data: &[u8]| {
+        // Process events callback
+        let processes_clone = processes.clone();
+        let event_tx_clone = event_tx.clone();
+        let process_event_callback = move |data: &[u8]| {
             if data.len() < std::mem::size_of::<BpfProcessEvent>() {
-                warn!("Received truncated BPF event");
+                warn!("Received truncated BPF process event");
                 return 0;
             }
 
@@ -179,17 +218,55 @@ impl EbpfProcessMonitor {
                 &*(data.as_ptr() as *const BpfProcessEvent)
             };
 
-            Self::handle_bpf_event(event, &processes, &event_tx);
+            Self::handle_process_event(event, &processes_clone, &event_tx_clone);
             0
         };
 
-        // Build ring buffer
+        // Network events callback
+        let network_event_callback = |data: &[u8]| {
+            if data.len() < std::mem::size_of::<BpfNetworkEvent>() {
+                warn!("Received truncated BPF network event");
+                return 0;
+            }
+
+            let event: &BpfNetworkEvent = unsafe {
+                &*(data.as_ptr() as *const BpfNetworkEvent)
+            };
+
+            Self::handle_network_event(event);
+            0
+        };
+
+        // File events callback
+        let file_event_callback = |data: &[u8]| {
+            if data.len() < std::mem::size_of::<BpfFileEvent>() {
+                warn!("Received truncated BPF file event");
+                return 0;
+            }
+
+            let event: &BpfFileEvent = unsafe {
+                &*(data.as_ptr() as *const BpfFileEvent)
+            };
+
+            Self::handle_file_event(event);
+            0
+        };
+
+        // Build ring buffer with all event types
         let mut builder = RingBufferBuilder::new();
         builder
             .add(&skel.maps.events, process_event_callback)
-            .expect("Failed to add ring buffer");
+            .expect("Failed to add process events ring buffer");
+        builder
+            .add(&skel.maps.network_events, network_event_callback)
+            .expect("Failed to add network events ring buffer");
+        builder
+            .add(&skel.maps.file_events, file_event_callback)
+            .expect("Failed to add file events ring buffer");
 
         let ring_buffer = builder.build().expect("Failed to build ring buffer");
+
+        info!("eBPF ring buffers initialized for process, network, and file events");
 
         // Poll loop
         loop {
@@ -199,8 +276,53 @@ impl EbpfProcessMonitor {
         }
     }
 
-    /// Handle a BPF event
-    fn handle_bpf_event(
+    /// Handle a network event from eBPF
+    fn handle_network_event(event: &BpfNetworkEvent) {
+        let comm = cstr_to_string(&event.comm);
+
+        let addr_str = match event.family {
+            AF_INET => {
+                let bytes = event.addr_v4.to_be_bytes();
+                format!("{}.{}.{}.{}:{}", bytes[0], bytes[1], bytes[2], bytes[3],
+                        u16::from_be(event.port))
+            }
+            AF_INET6 => {
+                format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}",
+                    u16::from_be_bytes([event.addr_v6[0], event.addr_v6[1]]),
+                    u16::from_be_bytes([event.addr_v6[2], event.addr_v6[3]]),
+                    u16::from_be_bytes([event.addr_v6[4], event.addr_v6[5]]),
+                    u16::from_be_bytes([event.addr_v6[6], event.addr_v6[7]]),
+                    u16::from_be_bytes([event.addr_v6[8], event.addr_v6[9]]),
+                    u16::from_be_bytes([event.addr_v6[10], event.addr_v6[11]]),
+                    u16::from_be_bytes([event.addr_v6[12], event.addr_v6[13]]),
+                    u16::from_be_bytes([event.addr_v6[14], event.addr_v6[15]]),
+                    u16::from_be(event.port))
+            }
+            AF_UNIX => "unix".to_string(),
+            _ => "unknown".to_string(),
+        };
+
+        debug!("BPF: Network connect: {} (PID: {}) -> {}", comm, event.pid, addr_str);
+    }
+
+    /// Handle a file event from eBPF
+    fn handle_file_event(event: &BpfFileEvent) {
+        let comm = cstr_to_string(&event.comm);
+        let path = cstr_to_string(&event.path);
+
+        // Filter out common noise paths
+        if path.starts_with("/proc/") ||
+           path.starts_with("/sys/") ||
+           path.starts_with("/dev/") {
+            return;
+        }
+
+        debug!("BPF: File open: {} (PID: {}) -> {} (flags: 0x{:x})",
+               comm, event.pid, path, event.flags);
+    }
+
+    /// Handle a process event from eBPF
+    fn handle_process_event(
         event: &BpfProcessEvent,
         processes: &Arc<RwLock<HashMap<u32, ProcessInfo>>>,
         event_tx: &broadcast::Sender<ProcessEvent>,
