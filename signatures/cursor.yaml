@@ -1,0 +1,23 @@
+# Cursor IDE Agent Signature
+name: cursor
+display_name: "Cursor"
+icon: "cursor.svg"
+
+detection:
+  process_names:
+    - "Cursor"
+    - "cursor"
+    - "Cursor Helper"
+    - "Cursor Helper (Renderer)"
+  exe_patterns:
+    - regex: "Cursor.*\\.app"
+    - regex: "cursor\\.exe"
+
+child_process_tracking: true
+
+network_endpoints:
+  expected:
+    - "api.cursor.sh"
+    - "api.openai.com"
+    - "api.anthropic.com"
+  suspicious_if_not_in_list: false

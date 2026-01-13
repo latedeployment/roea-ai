@@ -1,0 +1,19 @@
+# Windsurf IDE Agent Signature
+name: windsurf
+display_name: "Windsurf"
+icon: "windsurf.svg"
+
+detection:
+  process_names:
+    - "Windsurf"
+    - "windsurf"
+  exe_patterns:
+    - regex: "[Ww]indsurf"
+    - regex: "Windsurf.*\\.app"
+    - regex: "windsurf\\.exe"
+
+child_process_tracking: true
+
+network_endpoints:
+  expected: []
+  suspicious_if_not_in_list: false

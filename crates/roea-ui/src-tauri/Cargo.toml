@@ -1,0 +1,32 @@
+[package]
+name = "roea-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "roea-ai desktop application"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+tonic-build = { workspace = true }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# gRPC client
+tonic = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

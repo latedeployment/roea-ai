@@ -1,0 +1,25 @@
+# Aider AI Agent Signature
+name: aider
+display_name: "Aider"
+icon: "aider.svg"
+
+detection:
+  process_names:
+    - "aider"
+  command_patterns:
+    - regex: "aider\\s+"
+    - regex: "python.*aider"
+  parent_hints:
+    - "bash"
+    - "zsh"
+    - "fish"
+    - "python"
+    - "python3"
+
+child_process_tracking: true
+
+network_endpoints:
+  expected:
+    - "api.openai.com"
+    - "api.anthropic.com"
+  suspicious_if_not_in_list: false

@@ -1,0 +1,25 @@
+# Claude Code AI Agent Signature
+name: claude_code
+display_name: "Claude Code"
+icon: "claude.svg"
+
+detection:
+  process_names:
+    - "claude"
+  command_patterns:
+    - regex: "claude\\s+(chat|code|--|api)"
+  parent_hints:
+    - "bash"
+    - "zsh"
+    - "fish"
+    - "pwsh"
+    - "cmd.exe"
+
+child_process_tracking: true
+
+network_endpoints:
+  expected:
+    - "api.anthropic.com"
+    - "sentry.io"
+    - "statsig.anthropic.com"
+  suspicious_if_not_in_list: false
