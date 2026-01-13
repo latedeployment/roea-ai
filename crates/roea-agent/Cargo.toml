@@ -80,3 +80,19 @@ tempfile = "3.10"
 mockall = "0.13"
 test-case = "3.3"
 insta = { version = "1.40", features = ["json"] }
+
+[[bench]]
+name = "process_monitor_bench"
+harness = false
+
+[[bench]]
+name = "network_monitor_bench"
+harness = false
+
+[[bench]]
+name = "storage_bench"
+harness = false
+
+[[bench]]
+name = "signature_bench"
+harness = false

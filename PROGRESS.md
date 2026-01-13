@@ -727,3 +727,113 @@ INFO eBPF process monitoring available, using kernel tracepoints
 - Responsive design
 
 **Total: 150+ component tests across 5 test files**
+
+---
+
+### Task Selection: THE-43 - Performance & Benchmark Suite
+
+**Why Selected:**
+1. Completes THE-36 (QA Testing Platform Architecture) epic - Urgent priority
+2. All unit tests and component tests (THE-37 through THE-42) are complete
+3. Performance benchmarks ensure the system meets latency and throughput requirements
+4. Essential for identifying bottlenecks before production use
+5. Criterion benchmarks provide reproducible performance baselines
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Created Criterion benchmark suite for Rust components
+- Added UI performance tests with Playwright
+- Implemented stress test scenarios for high load
+- Configured benchmark binaries in Cargo.toml
+
+**Rust Benchmarks (Criterion):**
+
+1. **Process Monitor Benchmarks** (`process_monitor_bench.rs`):
+   - Tree construction (10-1000 processes)
+   - Child process lookup
+   - Process filtering by agent type
+   - Process search by name
+   - Iteration performance
+   - PID lookup via HashMap
+
+2. **Network Monitor Benchmarks** (`network_monitor_bench.rs`):
+   - Connection grouping by PID
+   - Connection grouping by endpoint
+   - Filtering by state (established/closed)
+   - Filtering by protocol (TCP/UDP)
+   - Unique endpoint extraction
+   - Bandwidth calculation
+   - IPv4 hex address parsing
+
+3. **Storage Benchmarks** (`storage_bench.rs`):
+   - Single process serialization
+   - Batch serialization (10-1000 items)
+   - Connection serialization
+   - File operation serialization
+   - Data generation overhead
+   - Memory allocation patterns
+
+4. **Signature Benchmarks** (`signature_bench.rs`):
+   - Single process matching
+   - Batch matching (10%-50% agents)
+   - Exact vs regex matching comparison
+   - Signature lookup by name
+   - Signature iteration
+
+**UI Performance Tests (Playwright):**
+
+1. **Load Time Tests**:
+   - Initial page load < 2 seconds
+   - Small dataset (5 nodes) < 500ms
+   - Medium dataset (12 nodes) < 1 second
+   - Large dataset (100 nodes) < 3 seconds
+
+2. **Interaction Latency Tests**:
+   - Node click response < 100ms
+   - Search input response < 200ms
+   - Layout switch < 500ms
+   - Filter toggle < 100ms
+   - Export download < 500ms
+
+3. **Render Quality Tests**:
+   - 60fps during idle (< 10 dropped frames)
+   - Responsive during graph interaction
+
+4. **Memory Tests**:
+   - No memory leaks (< 50% growth after operations)
+
+5. **Stress Tests**:
+   - 50 processes: < 5 seconds
+   - 100 processes: < 8 seconds
+   - 200 processes: < 15 seconds
+   - Search with 100 nodes: < 500ms
+   - Rapid layout switching stability
+
+6. **Metrics Collection**:
+   - DOM Content Loaded timing
+   - First Paint / First Contentful Paint
+   - Page load timing
+
+**Benchmark Commands:**
+```bash
+# Run all Rust benchmarks
+cargo bench
+
+# Run specific benchmark
+cargo bench --bench process_monitor_bench
+cargo bench --bench network_monitor_bench
+cargo bench --bench storage_bench
+cargo bench --bench signature_bench
+
+# Run UI performance tests
+cd crates/roea-ui && npm run test:e2e -- --grep "Performance"
+```
+
+**Performance Targets:**
+- Event processing latency: p50 < 10ms, p95 < 50ms, p99 < 100ms
+- UI render: 60fps target
+- Initial load: < 2 seconds
+- Interaction latency: < 100ms
+
+**Total: 4 Criterion benchmark files + 1 Playwright performance test file**
