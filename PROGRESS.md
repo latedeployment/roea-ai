@@ -1420,3 +1420,41 @@ Decided to enhance the existing VitePress documentation site with marketing elem
 - `infra/scripts/bootstrap.sh` - Backend setup script
 - `infra/scripts/setup-runner.sh` - Manual runner setup
 - `.github/workflows/infra.yml` - Infrastructure CI workflow
+
+---
+
+### Documentation Site Completion
+
+**Status:** ✅ Completed
+
+Added 20 comprehensive documentation pages to complete the VitePress documentation site:
+
+**Guide Pages:**
+- `how-it-works.md` - Architecture, data flow, component overview
+- `agent-detection.md` - Signature system, patterns, customization
+- `storage.md` - DuckDB configuration, queries, retention
+
+**Feature Documentation:**
+- `file-access.md` - File operation monitoring, filtering
+- `search.md` - Query DSL, advanced filtering, saved searches
+- `process-graph.md` - D3.js visualization, layouts, interactions
+- `dashboard.md` - Dashboard widgets, metrics, alerts
+
+**Agent-Specific Pages:**
+- `agents/claude-code.md` - Claude Code monitoring
+- `agents/cursor.md` - Cursor IDE monitoring
+- `agents/copilot.md` - VS Code Copilot monitoring
+- `agents/windsurf.md` - Windsurf monitoring
+- `agents/aider.md` - Aider CLI monitoring
+
+**Reference Documentation:**
+- `reference/storage.md` - Storage configuration reference
+- `reference/environment.md` - Environment variables reference
+- `reference/ebpf.md` - Linux eBPF setup guide
+- `reference/osquery.md` - osquery integration guide
+- `reference/opentelemetry.md` - OTLP export configuration
+
+**Support Pages:**
+- `reference/troubleshooting.md` - Common issues and solutions
+- `reference/faq.md` - Frequently asked questions
+- `contributing.md` - Contribution guidelines
