@@ -18,6 +18,7 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 - THE-27: Process Tree Graph Visualization
 - THE-24: OpenTelemetry Integration Layer
 - THE-25: osquery Integration for System Telemetry
+- Linux eBPF Process Monitor with libbpf-rs (all 4 tracepoints per ARCHITECTURE.md)
 
 ---
 
@@ -25,6 +26,8 @@ In this session, we implemented the complete core infrastructure for roea-ai, an
 
 | Commit | Message |
 |--------|---------|
+| 423b7da | feat: Extend eBPF monitor with network and file tracepoints |
+| 833c35e | feat: Add Linux eBPF process monitor with libbpf-rs |
 | af86997 | feat: Add osquery integration for enhanced system telemetry |
 | 84d5463 | feat: Add OpenTelemetry integration for telemetry export |
 | 5020aae | feat: Enhanced process tree visualization with multiple layouts |
