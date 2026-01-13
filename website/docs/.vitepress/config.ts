@@ -20,6 +20,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/introduction' },
       { text: 'Features', link: '/features/process-monitoring' },
       { text: 'Reference', link: '/reference/configuration' },
+      { text: 'Download', link: '/download' },
       {
         text: 'Resources',
         items: [

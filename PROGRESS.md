@@ -174,6 +174,7 @@ roea-ai/
 | THE-36 | [Epic] [QA] Testing Platform Architecture | 2026-01-13 |
 | THE-59 | [DevOps] Release Automation Pipeline | 2026-01-13 |
 | THE-54 | [Marketing] Documentation Site Setup | 2026-01-13 |
+| THE-51 | [Marketing] Website Design & Development | 2026-01-13 |
 
 ---
 
@@ -189,7 +190,6 @@ roea-ai/
 | High | THE-58 | [QA] Beta Testing Program |
 | High | THE-60 | [DevOps] Code Signing Infrastructure |
 | High | THE-50 | [Marketing] Demo Video Production |
-| High | THE-51 | [Marketing] Website Design & Development |
 | High | THE-52 | [Marketing] Brand Identity & Visual Assets |
 | High | THE-28 | [Epic] Marketing & Go-to-Market Strategy |
 | Medium | THE-49 | [DevOps] Infrastructure as Code |
@@ -1264,3 +1264,63 @@ cd crates/roea-ui && npm run test:e2e -- --grep "Performance"
 - `website/docs/public/logo.svg` - Logo asset
 - `website/docs/public/hero-image.svg` - Hero illustration
 - `.github/workflows/docs.yml` - Documentation deployment workflow
+
+---
+
+### Task Selection: THE-51 - Website Design & Development
+
+**Why Selected:**
+1. High priority marketing task complementing documentation site
+2. Marketing website with download CTAs drives adoption
+3. Enhances existing VitePress setup with marketing elements
+4. Other tasks require external resources
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+
+Decided to enhance the existing VitePress documentation site with marketing elements rather than creating a separate Astro site, providing:
+- Unified experience (docs and marketing in one site)
+- Simpler maintenance
+- Faster deployment
+
+1. **Custom Theme** (`website/docs/.vitepress/theme/`):
+   - Dark-first design with gradient accents
+   - Custom CSS variables for brand colors
+   - Enhanced feature cards with hover effects
+   - Download button styling
+   - Responsive design adjustments
+   - CTA section styling
+
+2. **Marketing Home Page** (`website/docs/index.md`):
+   - Hero with compelling tagline
+   - Three action buttons (Download, GitHub, Docs)
+   - Platform download buttons with OS icons
+   - "Why roea-ai?" value proposition cards
+   - Supported agents compatibility table
+   - Quick start code snippet
+   - Architecture diagram
+   - CTA section with GitHub star badge
+
+3. **Download Page** (`website/docs/download.md`):
+   - Platform-specific download buttons
+   - System requirements table
+   - Installation instructions per platform
+   - Checksum verification guide
+   - Build from source link
+
+4. **Visual Design**:
+   - Blue-purple gradient theme
+   - Dark mode optimized colors
+   - Smooth hover transitions
+   - Icon integration for platforms
+   - Responsive grid layouts
+
+**Files Created:**
+- `website/docs/.vitepress/theme/index.ts` - Custom theme entry
+- `website/docs/.vitepress/theme/custom.css` - Custom styling
+- `website/docs/download.md` - Download page
+
+**Files Modified:**
+- `website/docs/.vitepress/config.ts` - Added download nav link
+- `website/docs/index.md` - Complete marketing redesign
