@@ -1,0 +1,13 @@
+---
+source: crates/roea-agent/src/monitor/tests.rs
+expression: snapshot
+---
+{
+  "direct_children": [
+    2000,
+    3000
+  ],
+  "root_name": "bash",
+  "root_pid": 1000,
+  "total_nodes": 8
+}

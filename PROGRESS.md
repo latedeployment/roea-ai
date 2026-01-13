@@ -246,3 +246,70 @@ INFO eBPF process monitoring available, using kernel tracepoints
 3. Set up CI/CD pipeline (THE-30)
 4. Add search/filtering functionality (THE-35)
 5. Create demo scenarios (THE-29)
+
+---
+
+## Session: 2026-01-13 (Continued)
+
+### Task Selection: THE-37 - Unit Tests - Process Monitoring Engine
+
+**Why Selected:**
+1. THE-36 (QA Testing Platform Architecture) is marked as Urgent priority
+2. THE-37 is the foundational QA task - process monitoring is the core of the system
+3. Testing must start with the core engine before testing dependent modules (network, file, signatures)
+4. Having unit tests enables safer refactoring and CI/CD integration
+5. Target coverage: 80%+ as specified in the task
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+- Created comprehensive test module in `crates/roea-agent/src/monitor/tests.rs`
+- Added test dependencies: tokio-test, criterion, proptest, tempfile, mockall, test-case, insta
+- Implemented MockProcessMonitor backend for deterministic testing
+- Created ProcessTreeNode structure for tree testing
+
+**Test Coverage:**
+1. **Tree Construction Tests** (7 tests):
+   - Empty process list, single process, parent-child relationships
+   - Shell tree structure, AI agent tree
+   - Deep trees (100 levels), wide trees (100 children)
+   - Orphan process handling
+
+2. **Child Detection Tests** (6 tests):
+   - Basic spawn detection, multiple children
+   - Spawn detection latency under 100ms target
+   - Nested child spawning, sibling processes
+   - Rapid spawn bursts
+
+3. **Exit Cleanup Tests** (7 tests):
+   - Basic exit, non-existent process exit
+   - Parent exits before children, child exits first
+   - Cascade cleanup, mass exit (100 processes)
+   - Double exit handling
+
+4. **PID Reuse Tests** (5 tests):
+   - Basic PID reuse, different parent scenarios
+   - Unique UUID per incarnation
+   - Rapid PID cycling (50 cycles)
+   - Tree maintenance under PID reuse
+
+5. **High Churn Tests** (5 tests):
+   - 100+ spawns per second verification
+   - Rapid spawn-exit cycles
+   - Concurrent operations (4 threads)
+   - Tree stability under churn
+   - Sustained load testing (1000+ ops/sec)
+
+6. **Backend Trait Tests** (4 tests):
+   - Start/stop lifecycle, idempotent start
+   - Snapshot completeness and consistency
+
+7. **Snapshot Tests** (2 tests):
+   - Shell tree snapshot
+   - AI agent tree snapshot
+
+8. **SysinfoMonitor Integration Tests** (4 tests):
+   - Monitor creation, start/stop
+   - Snapshot non-empty, field completeness
+
+**Total: 40 unit tests covering all THE-37 requirements**

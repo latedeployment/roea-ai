@@ -13,6 +13,9 @@
 
 mod sysinfo_monitor;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(all(target_os = "linux", ebpf_available))]
 mod ebpf_monitor;
 

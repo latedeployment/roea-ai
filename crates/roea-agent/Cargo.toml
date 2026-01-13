@@ -71,3 +71,12 @@ tonic-build = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
 libbpf-cargo = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
+proptest = "1.4"
+tempfile = "3.10"
+mockall = "0.13"
+test-case = "3.3"
+insta = { version = "1.40", features = ["json"] }

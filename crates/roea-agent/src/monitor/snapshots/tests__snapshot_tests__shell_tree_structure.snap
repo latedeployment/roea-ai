@@ -1,0 +1,9 @@
+---
+source: crates/roea-agent/src/monitor/tests.rs
+expression: snapshot
+---
+{
+  "max_depth": 6,
+  "root_pid": 1,
+  "total_nodes": 8
+}
