@@ -4,52 +4,134 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  create-release:
-    name: Create Release
+  # Validate and prepare release
+  prepare:
+    name: Prepare Release
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
     steps:
-      - name: Get version from tag
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - name: Get version from tag or input
         id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            echo "Expected format: X.Y.Z or X.Y.Z-prerelease"
+            exit 1
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since $PREV_TAG" > CHANGELOG_BODY.md
+            echo "" >> CHANGELOG_BODY.md
+            git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" >> CHANGELOG_BODY.md
+          else
+            echo "## Initial Release" > CHANGELOG_BODY.md
+            echo "" >> CHANGELOG_BODY.md
+            echo "First release of roea-ai." >> CHANGELOG_BODY.md
+          fi
+
+          echo "" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "---" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "### Installation" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "Download the appropriate binary for your platform:" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "- **macOS (Apple Silicon)**: \`roea-ai_${{ steps.get_version.outputs.version }}_aarch64.dmg\`" >> CHANGELOG_BODY.md
+          echo "- **macOS (Intel)**: \`roea-ai_${{ steps.get_version.outputs.version }}_x64.dmg\`" >> CHANGELOG_BODY.md
+          echo "- **Windows**: \`roea-ai_${{ steps.get_version.outputs.version }}_x64_en-US.msi\`" >> CHANGELOG_BODY.md
+          echo "- **Linux (Debian/Ubuntu)**: \`roea-ai_${{ steps.get_version.outputs.version }}_amd64.deb\`" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "### Checksums" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "SHA256 checksums are provided in \`checksums.txt\`" >> CHANGELOG_BODY.md
+
+          # Store for output
+          {
+            echo "changelog<<EOF"
+            cat CHANGELOG_BODY.md
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: roea-ai v${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.get_version.outputs.version) || github.ref }}
+          name: roea-ai v${{ steps.get_version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
           draft: true
-          prerelease: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' || contains(steps.get_version.outputs.version, '-') }}
+          generate_release_notes: false
 
+  # Build Tauri desktop application
   build-tauri:
-    name: Build Tauri (${{ matrix.platform }})
-    needs: create-release
+    name: Build Tauri (${{ matrix.target }})
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            artifact: roea-ai_${{ needs.create-release.outputs.version }}_amd64.deb
+            os_name: linux
+            artifact_suffix: _amd64.deb
           - platform: macos-latest
             target: x86_64-apple-darwin
-            artifact: roea-ai_${{ needs.create-release.outputs.version }}_x64.dmg
+            os_name: macos
+            artifact_suffix: _x64.dmg
           - platform: macos-latest
             target: aarch64-apple-darwin
-            artifact: roea-ai_${{ needs.create-release.outputs.version }}_aarch64.dmg
+            os_name: macos
+            artifact_suffix: _aarch64.dmg
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: roea-ai_${{ needs.create-release.outputs.version }}_x64_en-US.msi
+            os_name: windows
+            artifact_suffix: _x64_en-US.msi
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -97,23 +179,59 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-release-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-release-build-
+
+      # macOS code signing (if certificates are configured)
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'macos-latest' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm certificate.p12
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows signing
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/roea-ui
-          releaseId: ${{ needs.create-release.outputs.upload_url }}
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          tauriScript: npm run tauri
           args: --target ${{ matrix.target }}
 
+  # Build standalone agent binary
   build-agent:
-    name: Build Agent (${{ matrix.platform }})
-    needs: create-release
+    name: Build Agent (${{ matrix.target }})
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -156,10 +274,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-release-
 
       - name: Build agent
         run: cargo build --release --package roea-agent --target ${{ matrix.target }}
@@ -171,15 +291,68 @@ jobs:
 
       - name: Rename binary (Windows)
         if: matrix.platform == 'windows-latest'
+        shell: pwsh
         run: |
-          mv target/${{ matrix.target }}/release/roea-agent.exe ${{ matrix.artifact }}
+          Move-Item target/${{ matrix.target }}/release/roea-agent.exe ${{ matrix.artifact }}
+
+      - name: Generate checksum
+        shell: bash
+        run: |
+          if command -v sha256sum &> /dev/null; then
+            sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+          elif command -v shasum &> /dev/null; then
+            shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+          fi
 
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.artifact }}
-          asset_name: ${{ matrix.artifact }}
-          asset_content_type: application/octet-stream
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.prepare.outputs.version) || github.ref }}
+          files: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+
+  # Generate combined checksums file
+  checksums:
+    name: Generate Checksums
+    needs: [prepare, build-tauri, build-agent]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all release assets
+        uses: robinraju/release-downloader@v1
+        with:
+          tag: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.prepare.outputs.version) || github.ref_name }}
+          fileName: '*'
+          out-file-path: assets
+
+      - name: Generate combined checksums
+        run: |
+          cd assets
+          sha256sum * | grep -v '.sha256' > checksums.txt || true
+          cat checksums.txt
+
+      - name: Upload checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.prepare.outputs.version) || github.ref }}
+          files: assets/checksums.txt
+
+  # Publish release (remove draft status)
+  publish:
+    name: Publish Release
+    needs: [prepare, build-tauri, build-agent, checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.prepare.outputs.version) || github.ref }}
+          draft: false
+
+      - name: Summary
+        run: |
+          echo "## Release Published! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Version: v${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY

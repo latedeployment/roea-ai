@@ -161,6 +161,14 @@ roea-ai/
 | THE-27 | Process Tree Graph Visualization | 2026-01-13 |
 | THE-24 | OpenTelemetry Integration Layer | 2026-01-13 |
 | THE-25 | osquery Integration for System Telemetry | 2026-01-13 |
+| THE-37 | [QA] Unit Tests - Process Monitoring Engine | 2026-01-13 |
+| THE-38 | [QA] Unit Tests - Network Tracking | 2026-01-13 |
+| THE-39 | [QA] Unit Tests - File Access Monitoring | 2026-01-13 |
+| THE-40 | [QA] Unit Tests - Agent Signature Matching | 2026-01-13 |
+| THE-41 | [QA] E2E Integration Tests | 2026-01-13 |
+| THE-42 | [QA] UI Component Tests (Playwright) | 2026-01-13 |
+| THE-43 | [QA] Performance & Benchmark Suite | 2026-01-13 |
+| THE-47 | [DevOps] CI/CD Pipeline Core Setup | 2026-01-13 |
 
 ---
 
@@ -168,6 +176,22 @@ roea-ai/
 
 | Priority | Task ID | Title |
 |----------|---------|-------|
+| High | THE-44 | [DevOps] Cloud Testing Infrastructure - Linux |
+| High | THE-45 | [DevOps] Cloud Testing Infrastructure - macOS |
+| High | THE-46 | [DevOps] Cloud Testing Infrastructure - Windows |
+| High | THE-55 | [QA] Platform-Specific Testing Matrix |
+| High | THE-56 | [QA] Security Testing & Hardening |
+| High | THE-57 | [QA] Agent Compatibility Testing |
+| High | THE-58 | [QA] Beta Testing Program |
+| High | THE-59 | [DevOps] Release Automation Pipeline |
+| High | THE-60 | [DevOps] Code Signing Infrastructure |
+| High | THE-50 | [Marketing] Demo Video Production |
+| High | THE-51 | [Marketing] Website Design & Development |
+| High | THE-52 | [Marketing] Brand Identity & Visual Assets |
+| High | THE-54 | [Marketing] Documentation Site Setup |
+| Medium | THE-48 | [DevOps] Monitoring & Observability |
+| Medium | THE-49 | [DevOps] Infrastructure as Code |
+| Medium | THE-53 | [Marketing] Create Demo GIFs |
 | Medium | THE-29 | Create Demo Scenarios & Recordings |
 | Low | THE-34 | [Future] Enterprise Features Planning |
 
@@ -837,3 +861,95 @@ cd crates/roea-ui && npm run test:e2e -- --grep "Performance"
 - Interaction latency: < 100ms
 
 **Total: 4 Criterion benchmark files + 1 Playwright performance test file**
+
+---
+
+### Task Selection: THE-47 - CI/CD Pipeline Core Setup
+
+**Why Selected:**
+1. Foundational DevOps infrastructure that enables all subsequent tasks
+2. All QA tasks (THE-37 through THE-43) are complete, now need robust CI/CD
+3. Many tasks (THE-44 to THE-60) depend on having proper CI/CD in place
+4. Enables automated testing, releases, and dependency management
+5. Critical for maintaining code quality and security
+
+**Status:** ✅ Completed
+
+**Implementation Details:**
+
+1. **Enhanced CI Workflow** (`.github/workflows/ci.yml`):
+   - Matrix builds across Ubuntu, macOS, Windows
+   - sccache integration for faster builds
+   - Security audit with cargo-audit
+   - Code coverage with cargo-tarpaulin
+   - Concurrency control to cancel stale runs
+   - Summary job for required check status
+
+   **Jobs:**
+   - `lint`: Format + Clippy checks (runs first)
+   - `security`: cargo-audit for vulnerabilities
+   - `test`: Matrix tests on 3 OS platforms
+   - `frontend`: TypeScript checks, lint, build
+   - `e2e`: Playwright E2E tests
+   - `build`: Release build verification on all platforms
+   - `ci-success`: Final status aggregation
+
+2. **Nightly Workflow** (`.github/workflows/nightly.yml`):
+   - Scheduled at 2 AM UTC daily
+   - Extended test matrix (stable + beta Rust)
+   - Full benchmark suite execution
+   - E2E tests on all browsers (chromium, firefox, webkit)
+   - Performance test suite
+   - Security scans (cargo-audit, cargo-deny, npm audit)
+   - Memory leak detection with valgrind
+   - Result summary notification
+
+   **Manual Triggers:**
+   - `run_benchmarks`: Toggle benchmark execution
+   - `run_full_e2e`: Toggle full E2E suite
+
+3. **Improved Release Workflow** (`.github/workflows/release.yml`):
+   - Automatic changelog generation from git history
+   - Version validation (semver format)
+   - Cross-platform builds (Linux, macOS x64+arm64, Windows)
+   - macOS code signing support (certificate import)
+   - Windows Authenticode signing placeholders
+   - SHA256 checksum generation
+   - Combined checksums.txt artifact
+   - Draft release with auto-publish
+   - Manual trigger with version input
+
+4. **Dependabot Configuration** (`.github/dependabot.yml`):
+   - Weekly Cargo dependency updates
+   - Weekly npm dependency updates
+   - Weekly GitHub Actions updates
+   - Grouped minor/patch updates
+   - Review assignments
+   - Pre-release version filtering
+
+**Caching Strategy:**
+- Separate caches for registry and build artifacts
+- OS-specific cache keys
+- Incremental cache restoration with fallbacks
+- Playwright browser caching
+- TypeScript build info caching
+
+**Security Features:**
+- cargo-audit for Rust vulnerabilities
+- npm audit for JavaScript vulnerabilities
+- cargo-deny for license/ban checking
+- Critical vulnerability blocking
+
+**Secret Management (documented):**
+- `APPLE_CERTIFICATE`: macOS code signing cert (base64)
+- `APPLE_CERTIFICATE_PASSWORD`: Certificate password
+- `APPLE_SIGNING_IDENTITY`: Signing identity string
+- `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`: Notarization
+- `TAURI_SIGNING_PRIVATE_KEY`: Windows/update signing
+- `KEYCHAIN_PASSWORD`: macOS keychain unlock
+
+**Files Created/Modified:**
+- `.github/workflows/ci.yml` - Enhanced PR/push workflow
+- `.github/workflows/nightly.yml` - Full test suite workflow
+- `.github/workflows/release.yml` - Improved release workflow
+- `.github/dependabot.yml` - Dependency update automation

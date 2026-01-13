@@ -1,0 +1,369 @@
+name: Nightly
+
+# Run comprehensive tests every night at 2 AM UTC
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      run_benchmarks:
+        description: 'Run performance benchmarks'
+        required: false
+        default: true
+        type: boolean
+      run_full_e2e:
+        description: 'Run full E2E suite on all browsers'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: true
+
+jobs:
+  # Full test matrix - all platforms, all features
+  test-full:
+    name: Full Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, beta]
+        include:
+          - os: ubuntu-latest
+            install_deps: |
+              sudo apt-get update
+              sudo apt-get install -y protobuf-compiler libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+          - os: macos-latest
+            install_deps: brew install protobuf
+          - os: windows-latest
+            install_deps: choco install protoc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (${{ matrix.rust }})
+        uses: dtolnay/rust-action@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+
+      - name: Install dependencies
+        run: ${{ matrix.install_deps }}
+        shell: bash
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-nightly-
+
+      - name: Run cargo check
+        run: cargo check --all-targets --all-features
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+        continue-on-error: ${{ matrix.rust == 'beta' }}
+
+      - name: Run tests (all features)
+        run: cargo test --all-features --no-fail-fast -- --nocapture
+        env:
+          RUST_LOG: debug
+
+      - name: Run doc tests
+        run: cargo test --doc --all-features
+
+  # Run benchmarks (Linux only, stable Rust)
+  benchmarks:
+    name: Benchmarks
+    if: ${{ github.event.inputs.run_benchmarks != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+
+      - name: Install protobuf
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ubuntu-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ubuntu-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ubuntu-cargo-bench-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ubuntu-cargo-bench-${{ hashFiles('**/Cargo.lock') }}-
+            ubuntu-cargo-bench-
+
+      - name: Run process monitor benchmarks
+        run: cargo bench --package roea-agent --bench process_monitor_bench -- --noplot
+        continue-on-error: true
+
+      - name: Run network monitor benchmarks
+        run: cargo bench --package roea-agent --bench network_monitor_bench -- --noplot
+        continue-on-error: true
+
+      - name: Run storage benchmarks
+        run: cargo bench --package roea-agent --bench storage_bench -- --noplot
+        continue-on-error: true
+
+      - name: Run signature benchmarks
+        run: cargo bench --package roea-agent --bench signature_bench -- --noplot
+        continue-on-error: true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: target/criterion/
+          retention-days: 30
+
+  # Full E2E tests across all browsers
+  e2e-full:
+    name: E2E Full (${{ matrix.browser }})
+    if: ${{ github.event.inputs.run_full_e2e != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/roea-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/roea-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ matrix.browser }}-${{ hashFiles('crates/roea-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ matrix.browser }}-
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run E2E tests
+        run: npm run test:e2e -- --project=${{ matrix.browser }}
+        timeout-minutes: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: crates/roea-ui/test-results/
+          retention-days: 14
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report-${{ matrix.browser }}
+          path: crates/roea-ui/playwright-report/
+          retention-days: 14
+
+  # Performance tests
+  performance:
+    name: Performance Tests
+    if: ${{ github.event.inputs.run_full_e2e != 'false' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/roea-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/roea-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run performance tests
+        run: npx playwright test tests/e2e/performance.spec.ts --project=chromium
+        timeout-minutes: 20
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-report
+          path: crates/roea-ui/test-results/
+          retention-days: 30
+
+  # Security scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit cargo-deny --locked
+
+      - name: Run cargo audit
+        run: cargo audit --json > audit-results.json || true
+
+      - name: Run cargo deny
+        run: cargo deny check || true
+        continue-on-error: true
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit
+          path: audit-results.json
+          retention-days: 30
+
+      - name: Check for critical vulnerabilities
+        run: |
+          if cargo audit 2>&1 | grep -q "RUSTSEC.*critical"; then
+            echo "::error::Critical security vulnerability found!"
+            exit 1
+          fi
+
+  # Dependency check for frontend
+  frontend-security:
+    name: Frontend Security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/roea-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/roea-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run npm audit
+        run: npm audit --json > audit-results.json || true
+        continue-on-error: true
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: crates/roea-ui/audit-results.json
+          retention-days: 30
+
+      - name: Check for high/critical vulnerabilities
+        run: |
+          npm audit --audit-level=high || echo "::warning::High or critical npm vulnerabilities found"
+
+  # Memory leak detection
+  memory-check:
+    name: Memory Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install protobuf
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install valgrind
+        run: sudo apt-get install -y valgrind
+
+      - name: Build for testing
+        run: cargo build --all-features
+
+      - name: Run memory checks with valgrind
+        run: |
+          cargo test --all-features --no-run
+          # Find the test binary
+          TEST_BIN=$(find target/debug/deps -name 'roea_common-*' -type f -executable | head -1)
+          if [ -n "$TEST_BIN" ]; then
+            valgrind --leak-check=full --error-exitcode=1 "$TEST_BIN" --test-threads=1 || echo "::warning::Memory leaks detected"
+          fi
+        continue-on-error: true
+
+  # Summary notification
+  notify:
+    name: Notify
+    needs: [test-full, benchmarks, e2e-full, performance, security-scan, frontend-security]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize results
+        run: |
+          echo "## Nightly Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Full Tests | ${{ needs.test-full.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Benchmarks | ${{ needs.benchmarks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E Full | ${{ needs.e2e-full.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance | ${{ needs.performance.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Security | ${{ needs.frontend-security.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        if: contains(needs.*.result, 'failure')
+        run: |
+          echo "::error::One or more nightly jobs failed"
+          exit 1

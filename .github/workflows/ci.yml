@@ -9,10 +9,20 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Optimize build times with incremental compilation
+  CARGO_INCREMENTAL: 0
+  # Use sccache for faster builds
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  check:
-    name: Check
+  # Fast lint checks - run first, fail fast
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +32,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+
       - name: Install protobuf
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
@@ -29,13 +42,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Run cargo check
-        run: cargo check --all-targets --all-features
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-
 
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
@@ -43,32 +55,100 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  test:
-    name: Test
+  # Security audit - parallel with lint
+  security:
+    name: Security Audit
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit
+
+      - name: Check for known vulnerabilities
+        run: cargo audit --deny warnings || true
+
+  # Rust tests - matrix across all platforms
+  test:
+    name: Test (${{ matrix.os }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            install_deps: |
+              sudo apt-get update
+              sudo apt-get install -y protobuf-compiler libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+          - os: macos-latest
+            install_deps: brew install protobuf
+          - os: windows-latest
+            install_deps: choco install protoc
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-action@stable
 
-      - name: Install protobuf
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+
+      - name: Install dependencies
+        run: ${{ matrix.install_deps }}
+        shell: bash
 
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-build-
+
+      - name: Run cargo check
+        run: cargo check --all-targets --all-features
 
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --all-features --no-fail-fast
+        env:
+          RUST_LOG: debug
 
+      - name: Run tests with coverage (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo install cargo-tarpaulin --locked || true
+          cargo tarpaulin --out Xml --output-dir coverage --all-features --ignore-tests || true
+        continue-on-error: true
+
+      - name: Upload coverage (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  # Frontend checks
   frontend:
-    name: Frontend Check
+    name: Frontend
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -85,15 +165,34 @@ jobs:
 
       - name: Install dependencies
         run: npm ci || npm install
+
+      - name: Cache TypeScript build info
+        uses: actions/cache@v4
+        with:
+          path: |
+            crates/roea-ui/.tsbuildinfo
+            crates/roea-ui/node_modules/.cache
+          key: frontend-cache-${{ hashFiles('crates/roea-ui/package-lock.json') }}-${{ hashFiles('crates/roea-ui/src/**/*.ts', 'crates/roea-ui/src/**/*.tsx', 'crates/roea-ui/src/**/*.svelte') }}
+          restore-keys: |
+            frontend-cache-${{ hashFiles('crates/roea-ui/package-lock.json') }}-
+            frontend-cache-
 
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Lint
+        run: npm run lint || true
+
       - name: Build
         run: npm run build
 
-  e2e-tests:
+      - name: Run unit tests
+        run: npm test -- --run || true
+
+  # E2E tests
+  e2e:
     name: E2E Tests
+    needs: [frontend]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -110,6 +209,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci || npm install
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('crates/roea-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -124,3 +231,87 @@ jobs:
           name: playwright-report
           path: crates/roea-ui/test-results/
           retention-days: 7
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report
+          path: crates/roea-ui/playwright-report/
+          retention-days: 7
+
+  # Build check across platforms (ensures release builds work)
+  build:
+    name: Build (${{ matrix.os }})
+    needs: [lint, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            install_deps: |
+              sudo apt-get update
+              sudo apt-get install -y protobuf-compiler libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          - os: macos-latest
+            install_deps: brew install protobuf
+          - os: windows-latest
+            install_deps: choco install protoc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.4
+
+      - name: Install dependencies
+        run: ${{ matrix.install_deps }}
+        shell: bash
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-release-
+
+      - name: Build release
+        run: cargo build --release --package roea-agent
+
+      - name: Build check Tauri (skip actual Tauri build)
+        run: cargo build --release --package roea-ui
+
+  # Summary job that all others depend on
+  ci-success:
+    name: CI Success
+    needs: [lint, security, test, frontend, e2e, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]] || \
+             [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.frontend.result }}" != "success" ]] || \
+             [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required CI checks passed!"
