@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: roea-ai v${{ steps.get_version.outputs.version }}
+          draft: true
+          prerelease: false
+
+  build-tauri:
+    name: Build Tauri (${{ matrix.platform }})
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: roea-ai_${{ needs.create-release.outputs.version }}_amd64.deb
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            artifact: roea-ai_${{ needs.create-release.outputs.version }}_x64.dmg
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            artifact: roea-ai_${{ needs.create-release.outputs.version }}_aarch64.dmg
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: roea-ai_${{ needs.create-release.outputs.version }}_x64_en-US.msi
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install protobuf (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install protobuf (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: brew install protobuf
+
+      - name: Install protobuf (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: choco install protoc
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/roea-ui/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: crates/roea-ui
+        run: npm ci || npm install
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/roea-ui
+          releaseId: ${{ needs.create-release.outputs.upload_url }}
+          args: --target ${{ matrix.target }}
+
+  build-agent:
+    name: Build Agent (${{ matrix.platform }})
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: roea-agent-linux-x64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            artifact: roea-agent-macos-x64
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            artifact: roea-agent-macos-arm64
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: roea-agent-windows-x64.exe
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install protobuf (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install protobuf (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: brew install protobuf
+
+      - name: Install protobuf (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: choco install protoc
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build agent
+        run: cargo build --release --package roea-agent --target ${{ matrix.target }}
+
+      - name: Rename binary (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          mv target/${{ matrix.target }}/release/roea-agent ${{ matrix.artifact }}
+
+      - name: Rename binary (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          mv target/${{ matrix.target }}/release/roea-agent.exe ${{ matrix.artifact }}
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.artifact }}
+          asset_name: ${{ matrix.artifact }}
+          asset_content_type: application/octet-stream

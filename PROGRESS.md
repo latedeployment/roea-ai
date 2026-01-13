@@ -4,12 +4,24 @@
 
 ### Summary
 
-In this session, we implemented the core infrastructure for roea-ai, an EDR-like observability tool for AI coding agents. The following major components were completed:
+In this session, we implemented the complete core infrastructure for roea-ai, an EDR-like observability tool for AI coding agents.
 
-- **THE-21**: Core Process Monitoring Engine
-- **THE-22**: AI Agent Detection & Signature System
-- **THE-23**: Desktop UI Application (Tauri + React + D3.js)
-- **THE-26**: Local Storage Layer (DuckDB)
+**Completed Tasks:**
+- THE-21: Core Process Monitoring Engine
+- THE-22: AI Agent Detection & Signature System
+- THE-23: Desktop UI Application (Tauri + React + D3.js)
+- THE-26: Local Storage Layer (DuckDB)
+- THE-32: File Access Monitoring System
+- THE-33: Network Connection Tracking
+
+---
+
+## Commits
+
+| Commit | Message |
+|--------|---------|
+| e40a42d | feat: Implement core roea-ai monitoring infrastructure |
+| 7259718 | THE-31 - [SPIKE] Technical Architecture POC |
 
 ---
 
@@ -26,13 +38,17 @@ In this session, we implemented the core infrastructure for roea-ai, an EDR-like
 - `storage/mod.rs`: DuckDB storage with processes, connections, file_ops tables
 - `monitor/mod.rs`: ProcessMonitorService with event broadcasting
 - `monitor/sysinfo_monitor.rs`: Cross-platform process monitor using sysinfo
-- `grpc/mod.rs`: gRPC server with WatchProcesses, QueryProcesses, GetStatus, GetAgentSignatures
+- `network/mod.rs`: NetworkMonitorService for connection tracking
+- `network/proc_net.rs`: Linux /proc/net parser for TCP/UDP/Unix sockets
+- `file/mod.rs`: FileMonitorService with noise filtering
+- `file/proc_fd.rs`: Linux /proc/*/fd parser for open file tracking
+- `grpc/mod.rs`: gRPC server implementing the RoeaAgent service
 - `main.rs`: Daemon entry point with config, logging, tonic server
 
 **Proto definitions** (`proto/roea.proto`):
-- Full gRPC service definition
-- Streaming process events
-- Query endpoints for processes, connections, file ops
+- Full gRPC service definition per ARCHITECTURE.md
+- Streaming WatchProcesses, QueryProcesses, QueryConnections, QueryFileOps
+- GetAgentSignatures, GetStatus endpoints
 
 ### 2. Desktop UI (`crates/roea-ui/`)
 
@@ -77,45 +93,28 @@ roea-ai/
 │   └── windsurf.yaml
 └── crates/
     ├── roea-common/             # Shared types and traits
-    │   ├── Cargo.toml
     │   └── src/
     │       ├── lib.rs
     │       ├── events.rs
     │       ├── platform.rs
     │       └── signatures.rs
     ├── roea-agent/              # Monitoring daemon
-    │   ├── Cargo.toml
-    │   ├── build.rs
     │   └── src/
     │       ├── lib.rs
     │       ├── main.rs
     │       ├── storage/mod.rs
-    │       ├── monitor/mod.rs
-    │       ├── monitor/sysinfo_monitor.rs
+    │       ├── monitor/
+    │       ├── network/
+    │       ├── file/
     │       └── grpc/mod.rs
     └── roea-ui/                 # Desktop application
         ├── package.json
-        ├── vite.config.ts
-        ├── tsconfig.json
-        ├── index.html
         ├── src/
         │   ├── main.tsx
         │   ├── App.tsx
-        │   ├── styles.css
-        │   ├── lib/types.ts
         │   └── components/
-        │       ├── Header.tsx
-        │       ├── Sidebar.tsx
-        │       ├── ProcessGraph.tsx
-        │       ├── DetailsPanel.tsx
-        │       └── StatsBar.tsx
         └── src-tauri/
-            ├── Cargo.toml
-            ├── build.rs
-            ├── tauri.conf.json
             └── src/
-                ├── main.rs
-                └── grpc_client.rs
 ```
 
 ---
@@ -129,6 +128,8 @@ roea-ai/
 | THE-22 | [Epic] AI Agent Detection & Signature System | 2026-01-13 |
 | THE-23 | [Epic] Desktop UI Application | 2026-01-13 |
 | THE-26 | Local Storage Layer (Embedded DB) | 2026-01-13 |
+| THE-32 | File Access Monitoring System | 2026-01-13 |
+| THE-33 | Network Connection Tracking | 2026-01-13 |
 
 ---
 
@@ -137,8 +138,6 @@ roea-ai/
 | Priority | Task ID | Title |
 |----------|---------|-------|
 | High | THE-27 | Process Tree Graph Visualization (enhanced) |
-| High | THE-32 | File Access Monitoring System |
-| High | THE-33 | Network Connection Tracking |
 | Medium | THE-29 | Create Demo Scenarios & Recordings |
 | Medium | THE-30 | Cross-Platform Build & Distribution Pipeline |
 | Medium | THE-35 | Search & Filtering System |
@@ -178,7 +177,6 @@ cd crates/roea-ui && npm run tauri build
 
 1. **Install Rust toolchain** on development machine
 2. **Verify build** with `cargo check`
-3. **Add eBPF support** for Linux (requires elevated privileges)
-4. **Implement THE-32** (File Access Monitoring)
-5. **Implement THE-33** (Network Connection Tracking)
-6. **Set up CI/CD** with GitHub Actions (THE-30)
+3. Set up CI/CD pipeline (THE-30)
+4. Add search/filtering functionality (THE-35)
+5. Create demo scenarios (THE-29)
