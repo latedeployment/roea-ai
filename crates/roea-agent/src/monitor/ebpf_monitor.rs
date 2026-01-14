@@ -17,14 +17,15 @@
 #![cfg(all(target_os = "linux", ebpf_available))]
 
 use std::collections::HashMap;
+use std::mem::MaybeUninit;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use libbpf_rs::{
     skel::{OpenSkel, Skel, SkelBuilder},
-    MapCore, RingBufferBuilder,
+    RingBufferBuilder, OpenObject,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -155,9 +156,11 @@ impl EbpfProcessMonitor {
         info!("Starting eBPF process monitor");
 
         // Open and load BPF skeleton
+        // We leak the open_object to give it 'static lifetime since the skel is moved to a thread
         let skel_builder = ProcessMonitorSkelBuilder::default();
+        let open_object: &'static mut MaybeUninit<OpenObject> = Box::leak(Box::new(MaybeUninit::uninit()));
         let open_skel = skel_builder
-            .open()
+            .open(open_object)
             .map_err(|e| EbpfError::LoadFailed(e.to_string()))?;
 
         let mut skel = open_skel
@@ -201,7 +204,7 @@ impl EbpfProcessMonitor {
 
     /// Poll events from BPF ring buffers (process, network, file)
     fn poll_events(
-        mut skel: ProcessMonitorSkel<'static>,
+        skel: ProcessMonitorSkel<'static>,
         processes: Arc<RwLock<HashMap<u32, ProcessInfo>>>,
         event_tx: broadcast::Sender<ProcessEvent>,
     ) {

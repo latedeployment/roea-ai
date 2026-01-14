@@ -64,7 +64,7 @@ parking_lot = "0.12"
 
 # Async streams
 futures-core = "0.3"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # OpenTelemetry
 opentelemetry = "0.27"

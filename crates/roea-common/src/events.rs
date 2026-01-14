@@ -88,7 +88,11 @@ pub enum Protocol {
 pub enum ConnectionState {
     Connecting,
     Established,
+    Listen,
+    TimeWait,
+    CloseWait,
     Closed,
+    Unknown,
 }
 
 /// Network connection information

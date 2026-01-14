@@ -10,7 +10,6 @@ use chrono::Utc;
 use futures_core::Stream;
 use parking_lot::RwLock;
 use roea_common::{default_signatures, ProcessEventType, SignatureMatcher};
-use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use tonic::{Request, Response, Status};
 
@@ -119,14 +118,14 @@ impl RoeaAgent for RoeaAgentService {
         };
 
         let agent_filter: Vec<String> = req.agent_types;
-        let signature_matcher = SignatureMatcher::new(); // Clone would be better but not impl
+        let _signature_matcher = SignatureMatcher::new(); // Clone would be better but not impl
 
         // Create stream that first emits existing processes, then new events
         let stream = async_stream::stream! {
             // Emit existing processes first
-            for mut process in existing_processes {
+            for process in existing_processes {
                 // Apply signature matching
-                let matcher = SignatureMatcher::new();
+                let _matcher = SignatureMatcher::new();
                 // Note: In production, we'd share the matcher properly
                 if let Some(_agent_type) = process.agent_type.as_ref() {
                     // Already has agent type

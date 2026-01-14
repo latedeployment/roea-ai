@@ -6,7 +6,6 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use chrono::Utc;
 use roea_common::{FileOpInfo, FileOperation, PlatformError, PlatformResult};
 
 use super::FileMonitorBackend;

@@ -22,10 +22,10 @@ mod ebpf_monitor;
 pub use sysinfo_monitor::SysinfoMonitor;
 
 #[cfg(all(target_os = "linux", ebpf_available))]
+#[allow(unused_imports)]  // Public API export
 pub use ebpf_monitor::{EbpfProcessMonitor, EbpfError};
 
-use roea_common::{ProcessEvent, ProcessInfo, PlatformError, PlatformResult};
-use std::sync::Arc;
+use roea_common::{ProcessEvent, ProcessInfo, PlatformResult};
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 

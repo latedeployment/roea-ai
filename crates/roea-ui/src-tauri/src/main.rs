@@ -8,7 +8,7 @@ mod grpc_client;
 
 use std::sync::Arc;
 
-use tauri::{Manager, State};
+use tauri::State;
 use tokio::sync::RwLock;
 
 use grpc_client::AgentClient;

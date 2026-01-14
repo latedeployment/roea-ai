@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use duckdb::{params, Connection};
 use parking_lot::Mutex;
 use roea_common::{
-    ConnectionInfo, ConnectionState, FileOpInfo, FileOperation, ProcessInfo, Protocol,
+    ConnectionInfo, ConnectionState, FileOpInfo, ProcessInfo, Protocol,
 };
 use uuid::Uuid;
 
@@ -252,20 +252,16 @@ impl Storage {
         let mut stmt = conn.prepare(&sql)?;
 
         // Build params dynamically
-        let mut param_idx = 0;
         let mut params_vec: Vec<Box<dyn duckdb::ToSql>> = Vec::new();
 
         if let Some(st) = start_time {
             params_vec.push(Box::new(st.to_rfc3339()));
-            param_idx += 1;
         }
         if let Some(et) = end_time {
             params_vec.push(Box::new(et.to_rfc3339()));
-            param_idx += 1;
         }
         if let Some(at) = agent_type {
             params_vec.push(Box::new(at.to_string()));
-            param_idx += 1;
         }
         params_vec.push(Box::new(limit as i64));
         params_vec.push(Box::new(offset as i64));

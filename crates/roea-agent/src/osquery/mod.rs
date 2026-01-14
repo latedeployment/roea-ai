@@ -10,10 +10,9 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
-use tokio::sync::broadcast;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 use roea_common::events::{ConnectionInfo, ConnectionState, FileOpInfo, FileOperation, ProcessInfo, Protocol};
 use uuid::Uuid;

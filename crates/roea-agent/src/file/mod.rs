@@ -8,10 +8,9 @@ mod proc_fd;
 mod tests;
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use parking_lot::RwLock;
-use roea_common::{FileOpInfo, FileOperation, PlatformResult};
+use roea_common::{FileOpInfo, PlatformResult};
 use tokio::sync::broadcast;
 
 pub use proc_fd::ProcFdMonitor;

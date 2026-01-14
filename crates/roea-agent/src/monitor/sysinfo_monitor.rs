@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use parking_lot::RwLock;
-use roea_common::{PlatformError, PlatformResult, ProcessInfo};
+use roea_common::{PlatformResult, ProcessInfo};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 use super::ProcessMonitorBackend;
@@ -38,7 +38,7 @@ impl SysinfoMonitor {
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::new()
+            ProcessRefreshKind::nothing()
                 .with_cmd(UpdateKind::Always)
                 .with_cwd(UpdateKind::Always)
                 .with_exe(UpdateKind::Always)
@@ -52,10 +52,15 @@ impl SysinfoMonitor {
         let mut info = ProcessInfo::new(pid.as_u32(), proc.name().to_string_lossy().to_string());
 
         info.ppid = proc.parent().map(|p| p.as_u32());
-        info.cmdline = Some(proc.cmd().join(" "));
+        // cmd() returns &[OsString], so we need to convert each to string and join
+        let cmd_parts: Vec<String> = proc.cmd().iter()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        info.cmdline = Some(cmd_parts.join(" "));
         info.exe_path = proc.exe().map(|p| p.to_string_lossy().to_string());
         info.cwd = proc.cwd().map(|p| p.to_string_lossy().to_string());
-        info.user = proc.user_id().map(|u| format!("{}", u));
+        // Uid doesn't implement Display, use Debug format
+        info.user = proc.user_id().map(|u| format!("{:?}", u));
         info.start_time = chrono::DateTime::from_timestamp(proc.start_time() as i64, 0)
             .unwrap_or_else(Utc::now);
 

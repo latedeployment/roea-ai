@@ -1,4 +1,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Declare custom cfg flag so the compiler knows about it
+    println!("cargo::rustc-check-cfg=cfg(ebpf_available)");
+
     // Compile protobuf definitions
     tonic_build::configure()
         .build_server(true)

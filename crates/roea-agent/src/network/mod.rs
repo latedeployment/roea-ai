@@ -8,11 +8,10 @@ mod proc_net;
 mod tests;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use roea_common::{ConnectionInfo, ConnectionState, PlatformResult, Protocol};
+use roea_common::{ConnectionInfo, PlatformResult};
 use tokio::sync::broadcast;
 
 pub use proc_net::ProcNetMonitor;

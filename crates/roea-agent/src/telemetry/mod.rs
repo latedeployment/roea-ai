@@ -21,7 +21,7 @@ use opentelemetry_sdk::{
 };
 use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use roea_common::events::{ConnectionInfo, FileOpInfo, ProcessInfo};
 
@@ -104,8 +104,12 @@ impl TelemetryService {
                 .map_err(|e| TelemetryError::ExporterError(e.to_string()))?;
 
             let batch_processor = BatchSpanProcessor::builder(exporter, Tokio)
-                .with_scheduled_delay(Duration::from_millis(self.config.batch_delay_ms))
-                .with_max_export_batch_size(self.config.max_batch_size)
+                .with_batch_config(
+                    opentelemetry_sdk::trace::BatchConfigBuilder::default()
+                        .with_scheduled_delay(Duration::from_millis(self.config.batch_delay_ms))
+                        .with_max_export_batch_size(self.config.max_batch_size)
+                        .build(),
+                )
                 .build();
 
             provider_builder = provider_builder.with_span_processor(batch_processor);
@@ -140,12 +144,12 @@ impl TelemetryService {
             .with_kind(SpanKind::Internal)
             .with_attributes(vec![
                 KeyValue::new("process.pid", process.pid as i64),
-                KeyValue::new("process.parent_pid", process.ppid as i64),
+                KeyValue::new("process.parent_pid", process.ppid.map(|p| p as i64).unwrap_or(0)),
                 KeyValue::new("process.executable.name", process.name.clone()),
-                KeyValue::new("process.executable.path", process.exe_path.clone()),
-                KeyValue::new("process.command_line", process.cmdline.clone()),
-                KeyValue::new("process.owner", process.user.clone()),
-                KeyValue::new("process.working_directory", process.cwd.clone()),
+                KeyValue::new("process.executable.path", process.exe_path.clone().unwrap_or_default()),
+                KeyValue::new("process.command_line", process.cmdline.clone().unwrap_or_default()),
+                KeyValue::new("process.owner", process.user.clone().unwrap_or_default()),
+                KeyValue::new("process.working_directory", process.cwd.clone().unwrap_or_default()),
             ])
             .start(tracer);
 
@@ -167,12 +171,12 @@ impl TelemetryService {
             return;
         };
 
-        let span = tracer
+        let mut span = tracer
             .span_builder(format!("process.exit.{}", process.name))
             .with_kind(SpanKind::Internal)
             .with_attributes(vec![
                 KeyValue::new("process.pid", process.pid as i64),
-                KeyValue::new("process.parent_pid", process.ppid as i64),
+                KeyValue::new("process.parent_pid", process.ppid.map(|p| p as i64).unwrap_or(0)),
                 KeyValue::new("process.executable.name", process.name.clone()),
             ])
             .start(tracer);
@@ -187,31 +191,33 @@ impl TelemetryService {
             return;
         };
 
-        let span_name = format!("network.{}.{}", conn.protocol, conn.state);
+        let span_name = format!("network.{:?}.{:?}", conn.protocol, conn.state);
 
-        let span = tracer
+        let mut span = tracer
             .span_builder(span_name)
             .with_kind(SpanKind::Client)
             .with_attributes(vec![
-                KeyValue::new("network.transport", conn.protocol.clone()),
-                KeyValue::new("network.local.address", conn.local_addr.clone()),
-                KeyValue::new("network.local.port", conn.local_port as i64),
-                KeyValue::new("network.peer.address", conn.remote_addr.clone()),
-                KeyValue::new("network.peer.port", conn.remote_port as i64),
-                KeyValue::new("network.connection.state", conn.state.clone()),
+                KeyValue::new("network.transport", format!("{:?}", conn.protocol)),
+                KeyValue::new("network.local.address", conn.local_addr.clone().unwrap_or_default()),
+                KeyValue::new("network.local.port", conn.local_port.map(|p| p as i64).unwrap_or(0)),
+                KeyValue::new("network.peer.address", conn.remote_addr.clone().unwrap_or_default()),
+                KeyValue::new("network.peer.port", conn.remote_port.map(|p| p as i64).unwrap_or(0)),
+                KeyValue::new("network.connection.state", format!("{:?}", conn.state)),
                 KeyValue::new("process.pid", conn.pid as i64),
                 KeyValue::new("process.executable.name", process_name.to_string()),
             ])
             .start(tracer);
 
         // Classify the endpoint
-        if let Some(classification) = classify_endpoint(&conn.remote_addr, conn.remote_port) {
-            span.set_attribute(KeyValue::new("network.endpoint.classification", classification));
+        if let (Some(remote_addr), Some(remote_port)) = (&conn.remote_addr, conn.remote_port) {
+            if let Some(classification) = classify_endpoint(remote_addr, remote_port) {
+                span.set_attribute(KeyValue::new("network.endpoint.classification", classification));
+            }
         }
 
         span.end();
         debug!(
-            "Recorded connection: {}:{} -> {}:{}",
+            "Recorded connection: {:?}:{:?} -> {:?}:{:?}",
             conn.local_addr, conn.local_port, conn.remote_addr, conn.remote_port
         );
     }
@@ -222,21 +228,23 @@ impl TelemetryService {
             return;
         };
 
-        let span_name = format!("file.{}", file_op.operation);
+        let span_name = format!("file.{:?}", file_op.operation);
 
         let mut attributes = vec![
             KeyValue::new("file.path", file_op.path.clone()),
-            KeyValue::new("file.operation", file_op.operation.clone()),
+            KeyValue::new("file.operation", format!("{:?}", file_op.operation)),
             KeyValue::new("process.pid", file_op.pid as i64),
             KeyValue::new("process.executable.name", process_name.to_string()),
         ];
 
         // Add new path for rename operations
-        if !file_op.new_path.is_empty() {
-            attributes.push(KeyValue::new("file.new_path", file_op.new_path.clone()));
+        if let Some(ref new_path) = file_op.new_path {
+            if !new_path.is_empty() {
+                attributes.push(KeyValue::new("file.new_path", new_path.clone()));
+            }
         }
 
-        let span = tracer
+        let mut span = tracer
             .span_builder(span_name)
             .with_kind(SpanKind::Internal)
             .with_attributes(attributes)
@@ -248,7 +256,7 @@ impl TelemetryService {
         }
 
         span.end();
-        debug!("Recorded file op: {} on {}", file_op.operation, file_op.path);
+        debug!("Recorded file op: {:?} on {}", file_op.operation, file_op.path);
     }
 
     /// Record an AI agent session start
@@ -261,10 +269,10 @@ impl TelemetryService {
             .with_kind(SpanKind::Server)
             .with_attributes(vec![
                 KeyValue::new("ai.agent.type", agent_type.clone()),
-                KeyValue::new("ai.agent.session.start_time", process.start_time as i64),
+                KeyValue::new("ai.agent.session.start_time", process.start_time.timestamp()),
                 KeyValue::new("process.pid", process.pid as i64),
                 KeyValue::new("process.executable.name", process.name.clone()),
-                KeyValue::new("process.executable.path", process.exe_path.clone()),
+                KeyValue::new("process.executable.path", process.exe_path.clone().unwrap_or_default()),
             ])
             .start(tracer);
 
@@ -298,7 +306,7 @@ impl AgentSessionSpan {
     }
 
     /// End the session
-    pub fn end(self) {
+    pub fn end(mut self) {
         info!("Ending agent session for {} (PID: {})", self.agent_type, self.pid);
         self.span.end();
     }

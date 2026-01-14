@@ -224,11 +224,11 @@ export function ProcessGraph({
             .strength(0.5)
         )
         .force("charge", d3.forceManyBody()
-          .strength((d) => d.isAgent ? -300 : -150)
+          .strength((d) => (d as ProcessNode).isAgent ? -300 : -150)
           .distanceMax(300)
         )
         .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius((d) => d.isAgent ? 25 : 18))
+        .force("collision", d3.forceCollide().radius((d) => (d as ProcessNode).isAgent ? 25 : 18))
         .force("x", d3.forceX(width / 2).strength(0.05))
         .force("y", d3.forceY(height / 2).strength(0.05))
         .alphaDecay(0.02)
@@ -478,7 +478,7 @@ export function ProcessGraph({
           return `translate(${d.x}, ${d.y})`;
         })
         .style("cursor", "pointer")
-        .on("click", (event, d: any) => {
+        .on("click", (_event, d: any) => {
           if (d.data.virtual) return;
           const process = processes.find((p) => p.id === d.data.id);
           if (process) {
@@ -502,7 +502,7 @@ export function ProcessGraph({
       node.append("text")
         .attr("dy", "0.31em")
         .attr("x", (d: any) => layoutType === "radial" ? (d.x < Math.PI ? 16 : -16) : 0)
-        .attr("y", (d: any) => layoutType === "radial" ? 0 : 20)
+        .attr("y", () => layoutType === "radial" ? 0 : 20)
         .attr("text-anchor", (d: any) => {
           if (layoutType === "radial") return d.x < Math.PI ? "start" : "end";
           return "middle";

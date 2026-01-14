@@ -39,28 +39,37 @@ AI coding agents run with significant system access but offer limited visibility
 git clone https://github.com/latedeployment/roea-ai.git
 cd roea-ai
 
-# Install dependencies and setup
-make setup
+# Install system dependencies first (choose one based on your OS)
+just install-system-deps-fedora  # Fedora/RHEL
+just install-system-deps-debian  # Debian/Ubuntu
+
+# Install project dependencies and setup
+just setup
 
 # Run in development mode (two terminals)
-make run-agent    # Terminal 1: Start the monitoring daemon
-make run-ui       # Terminal 2: Start the desktop UI
+just run-agent    # Terminal 1: Start the monitoring daemon
+just run-ui       # Terminal 2: Start the desktop UI
 
 # Or see all available commands
-make help
+just help
 ```
 
 ## Installation
 
-### Using Make (Recommended)
+### Using just (Recommended)
 
 ```bash
 git clone https://github.com/latedeployment/roea-ai.git
 cd roea-ai
 
-make setup          # Install all dependencies
-make build-release  # Build for production
-make test           # Run all tests
+# Install system dependencies (required for GTK/Tauri)
+just install-system-deps-fedora  # Fedora/RHEL
+# OR
+just install-system-deps-debian  # Debian/Ubuntu
+
+just setup          # Install all dependencies
+just build-release  # Build for production
+just test           # Run all tests
 ```
 
 ### Manual Setup
@@ -70,6 +79,13 @@ make test           # Run all tests
 # - Rust 1.75+
 # - Node.js 18+
 # - protobuf-compiler
+# - System packages (see below)
+
+# System dependencies - Fedora/RHEL:
+sudo dnf install gtk3-devel openssl-devel webkit2gtk4.1-devel javascriptcoregtk4.1-devel libsoup3-devel elfutils-libelf-devel clang gcc-c++ protobuf-compiler bpftool
+
+# System dependencies - Debian/Ubuntu:
+sudo apt-get install libgtk-3-dev libssl-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libelf-dev clang g++ protobuf-compiler linux-tools-common
 
 # Clone
 git clone https://github.com/latedeployment/roea-ai.git
@@ -175,6 +191,9 @@ roea-ai/
 - Node.js 18+ with npm
 - protobuf-compiler
 - clang/llvm (Linux, for eBPF)
+- System packages for GTK/Tauri:
+  - Fedora/RHEL: `gtk3-devel openssl-devel webkit2gtk4.1-devel javascriptcoregtk4.1-devel libsoup3-devel elfutils-libelf-devel clang gcc-c++ protobuf-compiler bpftool`
+  - Debian/Ubuntu: `libgtk-3-dev libssl-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libelf-dev clang g++ protobuf-compiler linux-tools-common`
 
 ### Running Tests
 
