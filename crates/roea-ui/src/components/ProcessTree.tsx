@@ -13,6 +13,14 @@ interface TreeNode {
   children: TreeNode[];
 }
 
+interface AgentGroup {
+  agentType: string;
+  displayName: string;
+  rootProcesses: TreeNode[];
+  processCount: number;
+  activeCount: number;
+}
+
 const agentIcons: Record<string, string> = {
   claude_code: "CC",
   cursor: "Cu",
@@ -20,6 +28,15 @@ const agentIcons: Record<string, string> = {
   windsurf: "Ws",
   copilot: "Cp",
   continue_dev: "Cn",
+};
+
+const agentDisplayNames: Record<string, string> = {
+  claude_code: "Claude Code",
+  cursor: "Cursor",
+  aider: "Aider",
+  windsurf: "Windsurf",
+  copilot: "GitHub Copilot",
+  continue_dev: "Continue",
 };
 
 const agentColors: Record<string, string> = {
@@ -31,31 +48,91 @@ const agentColors: Record<string, string> = {
   continue_dev: "var(--agent-unknown)",
 };
 
-function buildTree(processes: Process[]): TreeNode[] {
+function buildAgentGroups(processes: Process[]): AgentGroup[] {
+  // Group processes by agent type
+  const agentProcessMap = new Map<string, Process[]>();
   const processMap = new Map<number, Process>();
   const childrenMap = new Map<number, Process[]>();
 
-  // Build lookup maps
   processes.forEach((p) => {
     processMap.set(p.pid, p);
+
+    // Build children map
     if (!childrenMap.has(p.ppid)) {
       childrenMap.set(p.ppid, []);
     }
     childrenMap.get(p.ppid)!.push(p);
   });
 
-  // Find root processes (those whose parent is not in our list)
-  const roots = processes.filter((p) => !processMap.has(p.ppid));
+  // Find the agent type for each process (inherit from parent if needed)
+  const resolvedAgentTypes = new Map<number, string>();
 
-  // Recursively build tree
-  function buildNode(process: Process): TreeNode {
+  function resolveAgentType(p: Process): string {
+    if (resolvedAgentTypes.has(p.pid)) {
+      return resolvedAgentTypes.get(p.pid)!;
+    }
+
+    if (p.agentType && p.agentType !== "" && p.agentType !== "unknown") {
+      resolvedAgentTypes.set(p.pid, p.agentType);
+      return p.agentType;
+    }
+
+    // Check parent
+    const parent = processMap.get(p.ppid);
+    if (parent) {
+      const parentAgent = resolveAgentType(parent);
+      resolvedAgentTypes.set(p.pid, parentAgent);
+      return parentAgent;
+    }
+
+    resolvedAgentTypes.set(p.pid, "");
+    return "";
+  }
+
+  // Resolve all agent types and group
+  processes.forEach((p) => {
+    const agentType = resolveAgentType(p);
+    if (agentType) {
+      if (!agentProcessMap.has(agentType)) {
+        agentProcessMap.set(agentType, []);
+      }
+      agentProcessMap.get(agentType)!.push(p);
+    }
+  });
+
+  // Build tree for each agent group
+  function buildNode(process: Process, agentProcesses: Set<number>): TreeNode {
     const children = (childrenMap.get(process.pid) || [])
+      .filter((child) => agentProcesses.has(child.pid))
       .sort((a, b) => a.pid - b.pid)
-      .map(buildNode);
+      .map((child) => buildNode(child, agentProcesses));
     return { process, children };
   }
 
-  return roots.sort((a, b) => a.pid - b.pid).map(buildNode);
+  const groups: AgentGroup[] = [];
+
+  agentProcessMap.forEach((procs, agentType) => {
+    const agentProcessPids = new Set(procs.map((p) => p.pid));
+
+    // Find root processes for this agent (those whose parent is not in this agent's processes)
+    const rootProcesses = procs
+      .filter((p) => !agentProcessPids.has(p.ppid))
+      .sort((a, b) => a.pid - b.pid)
+      .map((p) => buildNode(p, agentProcessPids));
+
+    const activeCount = procs.filter((p) => p.endTime === 0).length;
+
+    groups.push({
+      agentType,
+      displayName: agentDisplayNames[agentType] || agentType,
+      rootProcesses,
+      processCount: procs.length,
+      activeCount,
+    });
+  });
+
+  // Sort by active count descending
+  return groups.sort((a, b) => b.activeCount - a.activeCount);
 }
 
 function ProcessTreeNode({
@@ -78,8 +155,6 @@ function ProcessTreeNode({
   const isExpanded = expandedPids.has(process.pid);
   const isSelected = selectedProcess?.pid === process.pid;
   const isActive = process.endTime === 0;
-  const isAgent = process.agentType !== "" && process.agentType !== "unknown";
-  const agentColor = agentColors[process.agentType] || "var(--agent-unknown)";
 
   return (
     <div className="tree-node-container">
@@ -113,15 +188,6 @@ function ProcessTreeNode({
           }}
         />
 
-        {isAgent && (
-          <span
-            className="tree-agent-badge"
-            style={{ background: agentColor }}
-          >
-            {agentIcons[process.agentType] || "??"}
-          </span>
-        )}
-
         <span className="tree-process-name">{process.name}</span>
         <span className="tree-process-pid">(PID {process.pid})</span>
       </div>
@@ -145,23 +211,88 @@ function ProcessTreeNode({
   );
 }
 
+function AgentGroupNode({
+  group,
+  selectedProcess,
+  onSelectProcess,
+  expandedPids,
+  toggleExpand,
+  isExpanded,
+  onToggleGroup,
+}: {
+  group: AgentGroup;
+  selectedProcess: Process | null;
+  onSelectProcess: (process: Process | null) => void;
+  expandedPids: Set<number>;
+  toggleExpand: (pid: number) => void;
+  isExpanded: boolean;
+  onToggleGroup: () => void;
+}) {
+  const agentColor = agentColors[group.agentType] || "var(--agent-unknown)";
+  const icon = agentIcons[group.agentType] || "??";
+
+  return (
+    <div className="agent-group">
+      <div className="agent-group-header" onClick={onToggleGroup}>
+        <button className="tree-expand-btn">
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <span className="agent-group-icon" style={{ background: agentColor }}>
+          {icon}
+        </span>
+        <span className="agent-group-name">{group.displayName}</span>
+        <span className="agent-group-stats">
+          <span className="agent-group-active">{group.activeCount} active</span>
+          <span className="agent-group-total">/ {group.processCount}</span>
+        </span>
+      </div>
+      {isExpanded && (
+        <div className="agent-group-content">
+          {group.rootProcesses.map((node) => (
+            <ProcessTreeNode
+              key={node.process.pid}
+              node={node}
+              depth={1}
+              selectedProcess={selectedProcess}
+              onSelectProcess={onSelectProcess}
+              expandedPids={expandedPids}
+              toggleExpand={toggleExpand}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProcessTree({
   processes,
   selectedProcess,
   onSelectProcess,
 }: ProcessTreeProps) {
   const [expandedPids, setExpandedPids] = useState<Set<number>>(new Set());
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
 
-  const tree = useMemo(() => buildTree(processes), [processes]);
+  const agentGroups = useMemo(() => buildAgentGroups(processes), [processes]);
 
-  // Auto-expand all root nodes initially
+  // Auto-expand first agent group and its root processes
   useMemo(() => {
-    if (expandedPids.size === 0 && tree.length > 0) {
-      const initialExpanded = new Set<number>();
-      tree.forEach((node) => initialExpanded.add(node.process.pid));
-      setExpandedPids(initialExpanded);
+    if (expandedAgents.size === 0 && agentGroups.length > 0) {
+      const initialAgents = new Set<string>();
+      const initialPids = new Set<number>();
+
+      agentGroups.forEach((group) => {
+        initialAgents.add(group.agentType);
+        // Expand root processes of each agent
+        group.rootProcesses.forEach((node) => {
+          initialPids.add(node.process.pid);
+        });
+      });
+
+      setExpandedAgents(initialAgents);
+      setExpandedPids(initialPids);
     }
-  }, [tree]);
+  }, [agentGroups]);
 
   const toggleExpand = (pid: number) => {
     setExpandedPids((prev) => {
@@ -175,8 +306,22 @@ export function ProcessTree({
     });
   };
 
+  const toggleAgentGroup = (agentType: string) => {
+    setExpandedAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(agentType)) {
+        next.delete(agentType);
+      } else {
+        next.add(agentType);
+      }
+      return next;
+    });
+  };
+
   const expandAll = () => {
     const allPids = new Set<number>();
+    const allAgents = new Set<string>();
+
     function collectPids(nodes: TreeNode[]) {
       nodes.forEach((node) => {
         if (node.children.length > 0) {
@@ -185,11 +330,18 @@ export function ProcessTree({
         }
       });
     }
-    collectPids(tree);
+
+    agentGroups.forEach((group) => {
+      allAgents.add(group.agentType);
+      collectPids(group.rootProcesses);
+    });
+
+    setExpandedAgents(allAgents);
     setExpandedPids(allPids);
   };
 
   const collapseAll = () => {
+    setExpandedAgents(new Set());
     setExpandedPids(new Set());
   };
 
@@ -197,11 +349,11 @@ export function ProcessTree({
     return (
       <div className="process-tree">
         <div className="tree-header">
-          <span className="tree-title">Process Tree</span>
+          <span className="tree-title">Agents</span>
         </div>
         <div className="empty-state">
           <div className="empty-state-icon">📊</div>
-          <div className="empty-state-title">No processes</div>
+          <div className="empty-state-title">No agents</div>
           <div className="empty-state-description">
             Connect to the agent to see tracked processes
           </div>
@@ -213,7 +365,7 @@ export function ProcessTree({
   return (
     <div className="process-tree">
       <div className="tree-header">
-        <span className="tree-title">Process Tree</span>
+        <span className="tree-title">Agents</span>
         <div className="tree-actions">
           <button className="tree-action-btn" onClick={expandAll} title="Expand all">
             <ChevronDown size={12} />
@@ -224,15 +376,16 @@ export function ProcessTree({
         </div>
       </div>
       <div className="tree-content">
-        {tree.map((node) => (
-          <ProcessTreeNode
-            key={node.process.pid}
-            node={node}
-            depth={0}
+        {agentGroups.map((group) => (
+          <AgentGroupNode
+            key={group.agentType}
+            group={group}
             selectedProcess={selectedProcess}
             onSelectProcess={onSelectProcess}
             expandedPids={expandedPids}
             toggleExpand={toggleExpand}
+            isExpanded={expandedAgents.has(group.agentType)}
+            onToggleGroup={() => toggleAgentGroup(group.agentType)}
           />
         ))}
       </div>
