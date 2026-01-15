@@ -354,6 +354,12 @@ pub fn default_signatures() -> Vec<AgentSignature> {
                 expected: vec![
                     "api.openai.com".to_string(),
                     "api.anthropic.com".to_string(),
+                    "api.groq.com".to_string(),
+                    "api.together.xyz".to_string(),
+                    "localhost:11434".to_string(),  // Ollama
+                    "127.0.0.1:11434".to_string(),  // Ollama
+                    "localhost:1234".to_string(),   // LM Studio
+                    "127.0.0.1:1234".to_string(),   // LM Studio
                 ],
                 suspicious_if_not_in_list: false,
             },
@@ -391,7 +397,20 @@ pub fn default_signatures() -> Vec<AgentSignature> {
                 parent_hints: vec![],
             },
             child_process_tracking: true,
-            network_endpoints: NetworkEndpoints::default(),
+            network_endpoints: NetworkEndpoints {
+                expected: vec![
+                    "api.openai.com".to_string(),
+                    "api.anthropic.com".to_string(),
+                    "api.groq.com".to_string(),
+                    "api.together.xyz".to_string(),
+                    "api.mistral.ai".to_string(),
+                    "localhost:11434".to_string(),  // Ollama
+                    "127.0.0.1:11434".to_string(),  // Ollama
+                    "localhost:1234".to_string(),   // LM Studio
+                    "127.0.0.1:1234".to_string(),   // LM Studio
+                ],
+                suspicious_if_not_in_list: false,
+            },
         },
         AgentSignature {
             name: "copilot".to_string(),
@@ -415,6 +434,126 @@ pub fn default_signatures() -> Vec<AgentSignature> {
                 expected: vec![
                     "api.github.com".to_string(),
                     "copilot-proxy.githubusercontent.com".to_string(),
+                ],
+                suspicious_if_not_in_list: false,
+            },
+        },
+        AgentSignature {
+            name: "ollama".to_string(),
+            display_name: "Ollama".to_string(),
+            icon: Some("ollama.svg".to_string()),
+            detection: DetectionRules {
+                process_names: vec![
+                    "ollama".to_string(),
+                    "ollama_llama_server".to_string(),
+                ],
+                command_patterns: vec![
+                    CommandPattern {
+                        regex: r"ollama\s+(serve|run|pull|list|show|create|ps)".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"ollama-runner".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"/ollama/".to_string(),
+                    },
+                ],
+                exe_patterns: vec![
+                    CommandPattern {
+                        regex: r"ollama".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"ollama_llama_server".to_string(),
+                    },
+                ],
+                parent_hints: vec![
+                    "bash".to_string(),
+                    "zsh".to_string(),
+                    "fish".to_string(),
+                    "systemd".to_string(),
+                    "launchd".to_string(),
+                ],
+            },
+            child_process_tracking: true,
+            network_endpoints: NetworkEndpoints {
+                expected: vec![
+                    "localhost:11434".to_string(),
+                    "127.0.0.1:11434".to_string(),
+                    "ollama.ai".to_string(),
+                    "registry.ollama.ai".to_string(),
+                ],
+                suspicious_if_not_in_list: false,
+            },
+        },
+        AgentSignature {
+            name: "lm_studio".to_string(),
+            display_name: "LM Studio".to_string(),
+            icon: Some("lmstudio.svg".to_string()),
+            detection: DetectionRules {
+                process_names: vec![
+                    "LM Studio".to_string(),
+                    "lm-studio".to_string(),
+                    "lmstudio".to_string(),
+                ],
+                command_patterns: vec![
+                    CommandPattern {
+                        regex: r"lm-studio".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"lmstudio".to_string(),
+                    },
+                ],
+                exe_patterns: vec![
+                    CommandPattern {
+                        regex: r"LM Studio".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"lm-studio".to_string(),
+                    },
+                ],
+                parent_hints: vec![],
+            },
+            child_process_tracking: true,
+            network_endpoints: NetworkEndpoints {
+                expected: vec![
+                    "localhost:1234".to_string(),
+                    "127.0.0.1:1234".to_string(),
+                ],
+                suspicious_if_not_in_list: false,
+            },
+        },
+        AgentSignature {
+            name: "localai".to_string(),
+            display_name: "LocalAI".to_string(),
+            icon: Some("localai.svg".to_string()),
+            detection: DetectionRules {
+                process_names: vec![
+                    "local-ai".to_string(),
+                    "localai".to_string(),
+                ],
+                command_patterns: vec![
+                    CommandPattern {
+                        regex: r"local-ai".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"localai".to_string(),
+                    },
+                ],
+                exe_patterns: vec![
+                    CommandPattern {
+                        regex: r"local-ai".to_string(),
+                    },
+                ],
+                parent_hints: vec![
+                    "docker".to_string(),
+                    "containerd".to_string(),
+                ],
+            },
+            child_process_tracking: true,
+            network_endpoints: NetworkEndpoints {
+                expected: vec![
+                    "localhost:8080".to_string(),
+                    "127.0.0.1:8080".to_string(),
                 ],
                 suspicious_if_not_in_list: false,
             },
@@ -821,6 +960,84 @@ mod tests {
         let copilot = signatures.iter().find(|s| s.name == "copilot").unwrap();
 
         assert!(copilot.network_endpoints.expected.contains(&"api.github.com".to_string()));
+    }
+
+    // ========================================================================
+    // Test Module: Ollama and Local LLM Support
+    // ========================================================================
+
+    #[test]
+    fn test_exact_process_name_ollama() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process(1000, "ollama");
+        assert_eq!(matcher.match_process(&process), Some("ollama"));
+    }
+
+    #[test]
+    fn test_command_regex_ollama_serve() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "ollama", "ollama serve");
+        assert_eq!(matcher.match_process(&process), Some("ollama"));
+    }
+
+    #[test]
+    fn test_command_regex_ollama_run() {
+        let mut matcher = SignatureMatcher::new();
+        matcher.load(default_signatures()).unwrap();
+
+        let process = create_process_with_cmdline(1000, "ollama", "ollama run llama3");
+        assert_eq!(matcher.match_process(&process), Some("ollama"));
+    }
+
+    #[test]
+    fn test_network_endpoints_ollama() {
+        let signatures = default_signatures();
+        let ollama = signatures.iter().find(|s| s.name == "ollama").unwrap();
+
+        assert!(ollama.network_endpoints.expected.contains(&"localhost:11434".to_string()));
+        assert!(ollama.network_endpoints.expected.contains(&"127.0.0.1:11434".to_string()));
+        assert!(ollama.network_endpoints.expected.contains(&"registry.ollama.ai".to_string()));
+    }
+
+    #[test]
+    fn test_network_endpoints_lm_studio() {
+        let signatures = default_signatures();
+        let lm_studio = signatures.iter().find(|s| s.name == "lm_studio").unwrap();
+
+        assert!(lm_studio.network_endpoints.expected.contains(&"localhost:1234".to_string()));
+        assert!(lm_studio.network_endpoints.expected.contains(&"127.0.0.1:1234".to_string()));
+    }
+
+    #[test]
+    fn test_network_endpoints_localai() {
+        let signatures = default_signatures();
+        let localai = signatures.iter().find(|s| s.name == "localai").unwrap();
+
+        assert!(localai.network_endpoints.expected.contains(&"localhost:8080".to_string()));
+    }
+
+    #[test]
+    fn test_aider_supports_ollama_endpoints() {
+        let signatures = default_signatures();
+        let aider = signatures.iter().find(|s| s.name == "aider").unwrap();
+
+        // Aider should support both cloud and local LLM endpoints
+        assert!(aider.network_endpoints.expected.contains(&"api.openai.com".to_string()));
+        assert!(aider.network_endpoints.expected.contains(&"api.anthropic.com".to_string()));
+        assert!(aider.network_endpoints.expected.contains(&"localhost:11434".to_string()));  // Ollama
+        assert!(aider.network_endpoints.expected.contains(&"localhost:1234".to_string()));   // LM Studio
+    }
+
+    #[test]
+    fn test_continue_dev_supports_local_llm() {
+        let signatures = default_signatures();
+        let continue_dev = signatures.iter().find(|s| s.name == "continue_dev").unwrap();
+
+        assert!(continue_dev.network_endpoints.expected.contains(&"localhost:11434".to_string()));
     }
 
     // ========================================================================

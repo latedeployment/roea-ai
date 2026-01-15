@@ -1,0 +1,25 @@
+# LM Studio Local LLM Server Signature
+name: lm_studio
+display_name: "LM Studio"
+icon: "lmstudio.svg"
+
+detection:
+  process_names:
+    - "LM Studio"
+    - "lm-studio"
+    - "lmstudio"
+  command_patterns:
+    - regex: "lm-studio"
+    - regex: "lmstudio"
+  exe_patterns:
+    - regex: "LM Studio"
+    - regex: "lm-studio"
+  parent_hints: []
+
+child_process_tracking: true
+
+network_endpoints:
+  expected:
+    - "localhost:1234"
+    - "127.0.0.1:1234"
+  suspicious_if_not_in_list: false

@@ -26,9 +26,16 @@ const SENSITIVE_ENV_VARS: &[&str] = &[
     "GITHUB_TOKEN",
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
+    "GROQ_API_KEY",
+    "TOGETHER_API_KEY",
+    "MISTRAL_API_KEY",
     "DATABASE_URL",
     "DB_PASSWORD",
     "ENCRYPTION_KEY",
+    // Local LLM server configs (may contain auth info)
+    "OLLAMA_API_KEY",
+    "LM_STUDIO_API_KEY",
+    "LOCALAI_API_KEY",
 ];
 
 /// List of file path patterns that should be redacted
@@ -57,11 +64,20 @@ pub fn sanitize_for_log(input: &str) -> String {
         .replace_all(&result, "[REDACTED_ANTHROPIC_KEY]")
         .to_string();
 
-    // OpenAI keys: sk-...
-    result = regex_lite::Regex::new(r"sk-[a-zA-Z0-9]{20,}")
+    // OpenAI keys: sk-... (including sk-proj-... format)
+    result = regex_lite::Regex::new(r"sk-[a-zA-Z0-9_-]{20,}")
         .unwrap()
         .replace_all(&result, "[REDACTED_OPENAI_KEY]")
         .to_string();
+
+    // Groq keys: gsk_...
+    result = regex_lite::Regex::new(r"gsk_[a-zA-Z0-9]{20,}")
+        .unwrap()
+        .replace_all(&result, "[REDACTED_GROQ_KEY]")
+        .to_string();
+
+    // Together AI keys: typically long alphanumeric strings
+    // Mistral AI keys: similar pattern
 
     // GitHub tokens: ghp_, gho_, etc.
     result = regex_lite::Regex::new(r"gh[pousr]_[A-Za-z0-9_]{36,}")

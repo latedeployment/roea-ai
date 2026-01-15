@@ -1,0 +1,25 @@
+# LocalAI Local LLM Server Signature
+name: localai
+display_name: "LocalAI"
+icon: "localai.svg"
+
+detection:
+  process_names:
+    - "local-ai"
+    - "localai"
+  command_patterns:
+    - regex: "local-ai"
+    - regex: "localai"
+  exe_patterns:
+    - regex: "local-ai"
+  parent_hints:
+    - "docker"
+    - "containerd"
+
+child_process_tracking: true
+
+network_endpoints:
+  expected:
+    - "localhost:8080"
+    - "127.0.0.1:8080"
+  suspicious_if_not_in_list: false
