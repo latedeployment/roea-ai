@@ -22,4 +22,10 @@ network_endpoints:
   expected:
     - "api.openai.com"
     - "api.anthropic.com"
+    - "api.groq.com"
+    - "api.together.xyz"
+    - "localhost:11434"    # Ollama
+    - "127.0.0.1:11434"    # Ollama
+    - "localhost:1234"     # LM Studio
+    - "127.0.0.1:1234"     # LM Studio
   suspicious_if_not_in_list: false

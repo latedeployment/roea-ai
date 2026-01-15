@@ -68,12 +68,18 @@ impl NetworkMonitorService {
 
     /// Check if a remote address is a known API endpoint
     pub fn classify_endpoint(remote_addr: &str) -> EndpointClass {
-        // Check against known API endpoints
+        // Check against known API endpoints (including local LLM servers)
         if remote_addr.contains("api.anthropic.com")
             || remote_addr.contains("api.openai.com")
             || remote_addr.contains("api.cursor.sh")
+            || remote_addr.contains("api.groq.com")
+            || remote_addr.contains("api.together.xyz")
+            || remote_addr.contains("api.mistral.ai")
+            || remote_addr.contains("generativelanguage.googleapis.com")
         {
             EndpointClass::LlmApi
+        } else if Self::is_local_llm_endpoint(remote_addr) {
+            EndpointClass::LocalLlm
         } else if remote_addr.contains("github.com")
             || remote_addr.contains("api.github.com")
             || remote_addr.contains("githubusercontent.com")
@@ -99,6 +105,39 @@ impl NetworkMonitorService {
             EndpointClass::Unknown
         }
     }
+
+    /// Check if an endpoint is a local LLM server (Ollama, LM Studio, LocalAI, etc.)
+    fn is_local_llm_endpoint(remote_addr: &str) -> bool {
+        // Common local LLM server ports
+        let local_llm_ports = [
+            "11434", // Ollama default port
+            "1234",  // LM Studio default port
+            "8080",  // LocalAI, vLLM default ports
+            "5000",  // Various local servers
+            "5001",  // Alternative local server port
+            "8000",  // Common FastAPI/uvicorn port for local LLMs
+            "3000",  // Some local LLM UIs
+        ];
+
+        // Check if it's a localhost address with a known LLM port
+        let is_localhost = remote_addr.starts_with("127.")
+            || remote_addr.starts_with("localhost")
+            || remote_addr.starts_with("0.0.0.0")
+            || remote_addr == "::1";
+
+        if is_localhost {
+            for port in local_llm_ports {
+                if remote_addr.contains(&format!(":{}", port)) {
+                    return true;
+                }
+            }
+        }
+
+        // Also check for common local LLM hostnames
+        remote_addr.contains("ollama")
+            || remote_addr.contains("lmstudio")
+            || remote_addr.contains("localai")
+    }
 }
 
 impl Default for NetworkMonitorService {
@@ -112,6 +151,8 @@ impl Default for NetworkMonitorService {
 pub enum EndpointClass {
     /// LLM API endpoints (Anthropic, OpenAI, etc.)
     LlmApi,
+    /// Local LLM servers (Ollama, LM Studio, LocalAI, etc.)
+    LocalLlm,
     /// GitHub API and related
     GitHub,
     /// Package registries (npm, pypi, crates.io)

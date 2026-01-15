@@ -1,0 +1,33 @@
+# Ollama Local LLM Server Signature
+name: ollama
+display_name: "Ollama"
+icon: "ollama.svg"
+
+detection:
+  process_names:
+    - "ollama"
+    - "ollama_llama_server"
+  command_patterns:
+    - regex: "ollama\\s+(serve|run|pull|list|show|create|ps)"
+    - regex: "ollama-runner"
+    - regex: "/ollama/"
+  exe_patterns:
+    - regex: "ollama"
+    - regex: "ollama_llama_server"
+  parent_hints:
+    - "bash"
+    - "zsh"
+    - "fish"
+    - "systemd"
+    - "launchd"
+
+child_process_tracking: true
+
+network_endpoints:
+  expected:
+    - "localhost:11434"
+    - "127.0.0.1:11434"
+    - "0.0.0.0:11434"
+    - "ollama.ai"
+    - "registry.ollama.ai"
+  suspicious_if_not_in_list: false
