@@ -53,13 +53,17 @@ function App() {
 
   const connectToAgent = async () => {
     try {
+      console.log("Attempting to connect to agent at http://127.0.0.1:50051...");
       const result = await invoke<boolean>("connect_to_agent", {});
+      console.log("Connection result:", result);
       setConnected(result);
       if (result) {
         await refreshSignatures();
+        // Verify connection works by fetching status
+        await refreshStatus();
       }
     } catch (e) {
-      console.error("Failed to connect:", e);
+      console.error("Failed to connect to agent:", e);
       setConnected(false);
     }
   };

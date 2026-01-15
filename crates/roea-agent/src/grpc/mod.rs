@@ -55,6 +55,125 @@ impl AgentState {
             telemetry,
         }
     }
+
+    /// Scan existing processes and detect AI agents
+    pub fn scan_existing_processes(&self) {
+        tracing::info!("Scanning existing processes for AI agents...");
+        
+        match self.monitor.snapshot() {
+            Ok(processes) => {
+                // Build a map of PID -> process and PID -> agent_type
+                let mut pid_to_process: std::collections::HashMap<u32, &roea_common::ProcessInfo> = 
+                    std::collections::HashMap::new();
+                let mut agent_processes: std::collections::HashMap<u32, String> = 
+                    std::collections::HashMap::new();
+                
+                for process in &processes {
+                    pid_to_process.insert(process.pid, process);
+                    if let Some(agent_type) = self.signature_matcher.match_process(process) {
+                        agent_processes.insert(process.pid, agent_type.to_string());
+                    }
+                }
+                
+                // Find root AI agents (processes whose parent is NOT also an AI agent)
+                let mut root_agents: std::collections::HashMap<u32, (String, String, u32)> = 
+                    std::collections::HashMap::new(); // pid -> (agent_type, cmdline, child_count)
+                
+                for (&pid, agent_type) in &agent_processes {
+                    let process = pid_to_process.get(&pid).unwrap();
+                    
+                    // Walk up the parent chain to find if any parent is also an AI agent
+                    let mut is_root = true;
+                    let mut root_pid = pid;
+                    let mut current_ppid = process.ppid;
+                    
+                    while let Some(ppid) = current_ppid {
+                        if agent_processes.contains_key(&ppid) {
+                            // Parent is also an AI agent, so this is not a root
+                            is_root = false;
+                            root_pid = ppid;
+                            // Continue walking up to find the true root
+                            if let Some(parent) = pid_to_process.get(&ppid) {
+                                current_ppid = parent.ppid;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if is_root {
+                        // This is a root AI agent
+                        let cmdline = process.cmdline.as_deref().unwrap_or("<none>").to_string();
+                        root_agents.insert(pid, (agent_type.clone(), cmdline, 1));
+                    } else {
+                        // Increment child count for the root agent
+                        if let Some((_, _, count)) = root_agents.get_mut(&root_pid) {
+                            *count += 1;
+                        }
+                    }
+                }
+                
+                // Log the root AI agents
+                for (pid, (agent_type, cmdline, child_count)) in &root_agents {
+                    let process = pid_to_process.get(pid).unwrap();
+                    if *child_count > 1 {
+                        tracing::info!(
+                            "🤖 Detected AI agent: {} (type: {}, PID: {}, {} child processes)",
+                            process.name,
+                            agent_type,
+                            pid,
+                            child_count - 1
+                        );
+                    } else {
+                        tracing::info!(
+                            "🤖 Detected AI agent: {} (type: {}, PID: {}, cmdline: {})",
+                            process.name,
+                            agent_type,
+                            pid,
+                            cmdline
+                        );
+                    }
+                }
+                
+                tracing::info!(
+                    "Process scan complete: {} total processes, {} root AI agents ({} total AI processes)",
+                    processes.len(),
+                    root_agents.len(),
+                    agent_processes.len()
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed to scan existing processes: {}", e);
+            }
+        }
+    }
+
+    /// Apply signature matching to a process and return updated process
+    pub fn match_and_tag_process(&self, mut process: roea_common::ProcessInfo) -> roea_common::ProcessInfo {
+        if process.agent_type.is_none() {
+            if let Some(agent_type) = self.signature_matcher.match_process(&process) {
+                tracing::info!(
+                    "🤖 Tracking AI agent: {} (type: {}, PID: {})",
+                    process.name,
+                    agent_type,
+                    process.pid
+                );
+                process.agent_type = Some(agent_type.to_string());
+            }
+        }
+        process
+    }
+
+    /// Get snapshot with signature matching applied
+    pub fn get_processes_with_agents(&self) -> Result<Vec<roea_common::ProcessInfo>, roea_common::PlatformError> {
+        let processes = self.monitor.snapshot()?;
+        Ok(processes
+            .into_iter()
+            .map(|p| self.match_and_tag_process(p))
+            .collect())
+    }
 }
 
 /// gRPC service implementation
@@ -107,32 +226,22 @@ impl RoeaAgent for RoeaAgentService {
         // Get event receiver
         let rx = state.monitor.subscribe();
 
-        // If include_existing, send current processes first
+        // If include_existing, send current processes first (with signature matching applied)
         let existing_processes = if req.include_existing {
             state
-                .monitor
-                .snapshot()
+                .get_processes_with_agents()
                 .map_err(|e| Status::internal(format!("Failed to get snapshot: {}", e)))?
         } else {
             vec![]
         };
 
         let agent_filter: Vec<String> = req.agent_types;
-        let _signature_matcher = SignatureMatcher::new(); // Clone would be better but not impl
 
         // Create stream that first emits existing processes, then new events
         let stream = async_stream::stream! {
             // Emit existing processes first
             for process in existing_processes {
-                // Apply signature matching
-                let _matcher = SignatureMatcher::new();
-                // Note: In production, we'd share the matcher properly
-                if let Some(_agent_type) = process.agent_type.as_ref() {
-                    // Already has agent type
-                } else {
-                    // Would apply matcher here
-                }
-
+                // Filter by agent type if specified
                 if !agent_filter.is_empty() {
                     if let Some(ref agent_type) = process.agent_type {
                         if !agent_filter.contains(agent_type) {
@@ -198,37 +307,46 @@ impl RoeaAgent for RoeaAgentService {
         let req = request.into_inner();
         let state = self.state.read();
 
-        let start_time = if req.start_time > 0 {
-            chrono::DateTime::from_timestamp_millis(req.start_time)
-        } else {
-            None
-        };
+        // Get live snapshot with signature matching applied
+        let all_processes = state
+            .get_processes_with_agents()
+            .map_err(|e| Status::internal(format!("Failed to get processes: {}", e)))?;
 
-        let end_time = if req.end_time > 0 {
-            chrono::DateTime::from_timestamp_millis(req.end_time)
-        } else {
-            None
-        };
+        // Filter by agent type if specified - only return AI agents
+        let agent_filter = &req.agent_types;
+        let mut processes: Vec<roea_common::ProcessInfo> = all_processes
+            .into_iter()
+            .filter(|p| {
+                // Only include processes that are AI agents
+                if let Some(ref agent_type) = p.agent_type {
+                    if agent_filter.is_empty() {
+                        true
+                    } else {
+                        agent_filter.contains(agent_type)
+                    }
+                } else {
+                    false
+                }
+            })
+            .collect();
 
-        let agent_type = req.agent_types.first().map(|s| s.as_str());
+        // Apply limit and offset
         let limit = if req.limit > 0 { req.limit as usize } else { 100 };
         let offset = req.offset as usize;
-
-        let processes = state
-            .storage
-            .query_processes(start_time, end_time, agent_type, limit + 1, offset)
-            .map_err(|e| Status::internal(format!("Query failed: {}", e)))?;
-
-        let has_more = processes.len() > limit;
+        
+        let total_count = processes.len() as i32;
+        let has_more = processes.len() > offset + limit;
+        
         let processes: Vec<Process> = processes
             .into_iter()
+            .skip(offset)
             .take(limit)
             .map(|p| process_info_to_proto(&p))
             .collect();
 
         Ok(Response::new(QueryResponse {
             processes,
-            total_count: 0, // Would need separate count query
+            total_count,
             has_more,
         }))
     }

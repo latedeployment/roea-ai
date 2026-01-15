@@ -71,15 +71,20 @@ install-deps-full: install-deps
 # Building
 #---------------------------------------------------------------------------
 
+# Ensure UI dist placeholder exists for Tauri compile
+_ensure-ui-dist:
+    @mkdir -p crates/roea-ui/dist
+    @[ -f crates/roea-ui/dist/index.html ] || echo '<!DOCTYPE html><html><head><title>Roea UI</title></head><body><div id="root"></div></body></html>' > crates/roea-ui/dist/index.html
+
 # Build in debug mode
-build:
+build: _ensure-ui-dist
     @echo -e "{{cyan}}Building roea-agent (debug)...{{reset}}"
     {{cargo_env}} && cargo build
     @echo -e "{{cyan}}Building roea-ui (debug)...{{reset}}"
     cd crates/roea-ui && npm run build
 
 # Build in release mode
-build-release:
+build-release: _ensure-ui-dist
     @echo -e "{{cyan}}Building roea-agent (release)...{{reset}}"
     {{cargo_env}} && cargo build --release
     @echo -e "{{cyan}}Building roea-ui (release)...{{reset}}"
@@ -90,7 +95,7 @@ build-agent:
     {{cargo_env}} && cargo build --release --bin roea-agent
 
 # Build only the UI
-build-ui:
+build-ui: _ensure-ui-dist
     cd crates/roea-ui && npm run tauri build
 
 #---------------------------------------------------------------------------
@@ -116,7 +121,7 @@ run-agent-release:
     {{cargo_env}} && cargo run --release --bin roea-agent
 
 # Run the UI in development mode
-run-ui:
+run-ui: _ensure-ui-dist
     @echo -e "{{cyan}}Starting roea-ui...{{reset}}"
     cd crates/roea-ui && npm run tauri dev
 
@@ -133,12 +138,12 @@ run-ui-web:
 test: test-rust test-ui
 
 # Run Rust unit tests
-test-rust:
+test-rust: _ensure-ui-dist
     @echo -e "{{cyan}}Running Rust tests...{{reset}}"
     {{cargo_env}} && cargo test --workspace
 
 # Run Rust tests with output
-test-rust-verbose:
+test-rust-verbose: _ensure-ui-dist
     {{cargo_env}} && cargo test --workspace -- --nocapture
 
 # Run UI E2E tests
@@ -164,11 +169,11 @@ bench:
 #---------------------------------------------------------------------------
 
 # Check code compiles without building
-check:
+check: _ensure-ui-dist
     {{cargo_env}} && cargo check --workspace
 
 # Run all linters
-lint:
+lint: _ensure-ui-dist
     @echo -e "{{cyan}}Running Clippy...{{reset}}"
     {{cargo_env}} && cargo clippy --workspace -- -D warnings
     @echo -e "{{cyan}}Running ESLint...{{reset}}"
@@ -191,7 +196,7 @@ format-check:
 #---------------------------------------------------------------------------
 
 # Build documentation
-docs:
+docs: _ensure-ui-dist
     @echo -e "{{cyan}}Building Rust docs...{{reset}}"
     {{cargo_env}} && cargo doc --no-deps
     @echo -e "{{cyan}}Building website docs...{{reset}}"
@@ -245,7 +250,7 @@ run-agent-ebpf:
 #---------------------------------------------------------------------------
 
 # Build release artifacts for all platforms
-release-build:
+release-build: _ensure-ui-dist
     @echo -e "{{cyan}}Building release artifacts...{{reset}}"
     {{cargo_env}} && cargo build --release
     cd crates/roea-ui && npm run tauri build

@@ -138,27 +138,35 @@ impl CompiledSignature {
 
     /// Check if a process matches this signature
     pub fn matches(&self, process: &ProcessInfo) -> bool {
-        // Check process name
+        let name_lower = process.name.to_lowercase();
+        
+        // Check process name - use prefix/contains matching since Linux truncates names to 15 chars
         if self
             .signature
             .detection
             .process_names
             .iter()
-            .any(|name| process.name.eq_ignore_ascii_case(name))
+            .any(|name| {
+                let target = name.to_lowercase();
+                // Match if process name equals, starts with, or contains the target
+                name_lower == target || name_lower.starts_with(&target) || target.starts_with(&name_lower)
+            })
         {
             return true;
         }
 
-        // Check command line patterns
+        // Check command line patterns (case-insensitive)
         if let Some(ref cmdline) = process.cmdline {
-            if self.command_regexes.iter().any(|re| re.is_match(cmdline)) {
+            let cmdline_lower = cmdline.to_lowercase();
+            if self.command_regexes.iter().any(|re| re.is_match(&cmdline_lower)) {
                 return true;
             }
         }
 
-        // Check executable path patterns
+        // Check executable path patterns (case-insensitive)
         if let Some(ref exe_path) = process.exe_path {
-            if self.exe_regexes.iter().any(|re| re.is_match(exe_path)) {
+            let exe_lower = exe_path.to_lowercase();
+            if self.exe_regexes.iter().any(|re| re.is_match(&exe_lower)) {
                 return true;
             }
         }
@@ -233,11 +241,34 @@ pub fn default_signatures() -> Vec<AgentSignature> {
             display_name: "Claude Code".to_string(),
             icon: Some("claude.svg".to_string()),
             detection: DetectionRules {
-                process_names: vec!["claude".to_string()],
-                command_patterns: vec![CommandPattern {
-                    regex: r"claude\s+(chat|code|--|api)".to_string(),
-                }],
-                exe_patterns: vec![],
+                process_names: vec!["claude".to_string(), "claude-cli".to_string()],
+                command_patterns: vec![
+                    // Match "claude" as a command (at start or after path separator)
+                    CommandPattern {
+                        regex: r"(^|/)claude(\s|$)".to_string(),
+                    },
+                    // Match claude with any subcommand
+                    CommandPattern {
+                        regex: r"claude\s+".to_string(),
+                    },
+                    // Match npx claude or similar
+                    CommandPattern {
+                        regex: r"npx\s+.*claude".to_string(),
+                    },
+                    // Match Claude shell integration
+                    CommandPattern {
+                        regex: r"\.claude/".to_string(),
+                    },
+                    // Match Claude Code node processes
+                    CommandPattern {
+                        regex: r"@anthropic-ai/claude".to_string(),
+                    },
+                ],
+                exe_patterns: vec![
+                    CommandPattern {
+                        regex: r"claude".to_string(),
+                    },
+                ],
                 parent_hints: vec![
                     "bash".to_string(),
                     "zsh".to_string(),
@@ -267,13 +298,25 @@ pub fn default_signatures() -> Vec<AgentSignature> {
                     "Cursor Helper".to_string(),
                     "Cursor Helper (Renderer)".to_string(),
                 ],
-                command_patterns: vec![],
+                command_patterns: vec![
+                    // Match cursor-server on Linux
+                    CommandPattern {
+                        regex: r"\.cursor-server/cursor".to_string(),
+                    },
+                    // Match cursor CLI commands
+                    CommandPattern {
+                        regex: r"cursor-server".to_string(),
+                    },
+                ],
                 exe_patterns: vec![
                     CommandPattern {
                         regex: r"Cursor.*\.app".to_string(),
                     },
                     CommandPattern {
                         regex: r"cursor\.exe".to_string(),
+                    },
+                    CommandPattern {
+                        regex: r"\.cursor-server/cursor".to_string(),
                     },
                 ],
                 parent_hints: vec![],

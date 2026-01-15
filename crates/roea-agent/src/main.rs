@@ -11,11 +11,13 @@ mod osquery;
 mod storage;
 mod telemetry;
 
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use chrono::Local;
 use directories::ProjectDirs;
 use parking_lot::RwLock;
 use tonic::transport::Server;
@@ -42,6 +44,8 @@ struct Config {
     otlp_endpoint: Option<String>,
     /// Enable telemetry
     telemetry_enabled: bool,
+    /// Show live events for tracked AI agents
+    show_events: bool,
 }
 
 impl Default for Config {
@@ -56,15 +60,39 @@ impl Default for Config {
             log_level: "info".to_string(),
             otlp_endpoint: None,
             telemetry_enabled: true,
+            show_events: false,
         }
     }
 }
 
 impl Config {
-    /// Load configuration from environment and defaults
+    /// Load configuration from environment, defaults, and command line args
     fn from_env() -> Self {
         let mut config = Self::default();
 
+        // Parse command line arguments
+        let args: Vec<String> = std::env::args().collect();
+        for (i, arg) in args.iter().enumerate() {
+            match arg.as_str() {
+                "--show-events" | "-e" => {
+                    config.show_events = true;
+                }
+                "--listen" | "-l" => {
+                    if let Some(addr) = args.get(i + 1) {
+                        if let Ok(parsed) = addr.parse() {
+                            config.listen_addr = parsed;
+                        }
+                    }
+                }
+                "--help" | "-h" => {
+                    print_help();
+                    std::process::exit(0);
+                }
+                _ => {}
+            }
+        }
+
+        // Environment variables (can override CLI)
         if let Ok(addr) = std::env::var("ROEA_LISTEN_ADDR") {
             if let Ok(parsed) = addr.parse() {
                 config.listen_addr = parsed;
@@ -95,6 +123,25 @@ impl Config {
 
         config
     }
+}
+
+fn print_help() {
+    println!("roea-agent - AI Agent Monitoring Daemon");
+    println!();
+    println!("USAGE:");
+    println!("    roea-agent [OPTIONS]");
+    println!();
+    println!("OPTIONS:");
+    println!("    -e, --show-events    Print live events (process, network, file) for tracked AI agents");
+    println!("    -l, --listen <ADDR>  Address to bind gRPC server (default: 127.0.0.1:50051)");
+    println!("    -h, --help           Print this help message");
+    println!();
+    println!("ENVIRONMENT VARIABLES:");
+    println!("    ROEA_LISTEN_ADDR       gRPC server address");
+    println!("    ROEA_DB_PATH           Database file path");
+    println!("    ROEA_LOG_LEVEL         Log level (trace, debug, info, warn, error)");
+    println!("    ROEA_OTLP_ENDPOINT     OpenTelemetry OTLP endpoint");
+    println!("    ROEA_TELEMETRY_ENABLED Enable/disable telemetry (true/false)");
 }
 
 #[tokio::main]
@@ -164,6 +211,12 @@ async fn main() -> Result<()> {
     }
     tracing::info!("Process monitor started");
 
+    // Scan existing processes for AI agents
+    {
+        let state_lock = state.read();
+        state_lock.scan_existing_processes();
+    }
+
     // Start network monitor
     {
         let mut state_lock = state.write();
@@ -184,6 +237,11 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Start event streaming if --show-events is enabled
+    if config.show_events {
+        start_event_streaming(state.clone());
+    }
+
     // Create gRPC service
     let service = RoeaAgentService::new(state.clone());
 
@@ -197,4 +255,226 @@ async fn main() -> Result<()> {
         .context("gRPC server failed")?;
 
     Ok(())
+}
+
+/// Start background tasks to stream events to stdout
+fn start_event_streaming(state: Arc<RwLock<AgentState>>) {
+    println!("\n📡 Live event streaming enabled. Showing events for tracked AI agents...\n");
+    
+    // Get the tracked AI agent PIDs and their info
+    let tracked_pids: Arc<RwLock<HashSet<u32>>> = Arc::new(RwLock::new(HashSet::new()));
+    let known_processes: Arc<RwLock<HashMap<u32, String>>> = Arc::new(RwLock::new(HashMap::new()));
+    let known_connections: Arc<RwLock<HashSet<(u32, String, u16)>>> = Arc::new(RwLock::new(HashSet::new()));
+    let known_files: Arc<RwLock<HashSet<(u32, String)>>> = Arc::new(RwLock::new(HashSet::new()));
+    
+    // Populate initial tracked PIDs
+    {
+        let state_lock = state.read();
+        if let Ok(processes) = state_lock.monitor.snapshot() {
+            let mut pids = tracked_pids.write();
+            let mut known = known_processes.write();
+            for process in &processes {
+                if state_lock.signature_matcher.match_process(process).is_some() {
+                    pids.insert(process.pid);
+                }
+                known.insert(process.pid, process.name.clone());
+            }
+            println!("Tracking {} AI agent processes (polling every 500ms)\n", pids.len());
+        }
+    }
+    
+    // Spawn polling task for process changes
+    let tracked_pids_clone = tracked_pids.clone();
+    let known_processes_clone = known_processes.clone();
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+        loop {
+            interval.tick().await;
+            
+            let state_lock = state_clone.read();
+            if let Ok(processes) = state_lock.monitor.snapshot() {
+                let mut pids = tracked_pids_clone.write();
+                let mut known = known_processes_clone.write();
+                let current_pids: HashSet<u32> = processes.iter().map(|p| p.pid).collect();
+                
+                // Check for new processes
+                for process in &processes {
+                    if !known.contains_key(&process.pid) {
+                        let is_agent = state_lock.signature_matcher.match_process(process).is_some();
+                        let agent_type = state_lock.signature_matcher.match_process(process);
+                        if is_agent {
+                            pids.insert(process.pid);
+                        }
+                        
+                        // Check if parent is tracked
+                        let parent_tracked = process.ppid.map(|p| pids.contains(&p)).unwrap_or(false);
+                        
+                        if is_agent || parent_tracked || pids.contains(&process.pid) {
+                            let timestamp = Local::now().format("%H:%M:%S%.3f");
+                            
+                            // Get a display name - use agent type if detected, otherwise process name
+                            // Handle weird names like version numbers (e.g., "2.1.7" from Bun)
+                            let display_name = if let Some(agent) = &agent_type {
+                                agent.to_string()
+                            } else if process.name.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                                // Name looks like a version number, try to get from cmdline
+                                process.cmdline.as_ref()
+                                    .and_then(|c| c.split_whitespace().next())
+                                    .and_then(|s| s.rsplit('/').next())
+                                    .unwrap_or(&process.name)
+                                    .to_string()
+                            } else {
+                                process.name.clone()
+                            };
+                            
+                            let cmdline_display = process.cmdline.as_deref().unwrap_or("");
+                            let agent_marker = if is_agent { " [AI]" } else { "" };
+                            
+                            // Don't repeat the name in cmdline if they're the same
+                            let cmdline_show = if cmdline_display == display_name || cmdline_display.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!(" {}", cmdline_display)
+                            };
+                            
+                            println!(
+                                "[{}] 🚀 SPAWN PID:{} {}{}{}",
+                                timestamp,
+                                process.pid,
+                                display_name,
+                                cmdline_show,
+                                agent_marker
+                            );
+                        }
+                        // Store the better display name for later use in FILE/NET events
+                        let stored_name = if let Some(agent) = &agent_type {
+                            agent.to_string()
+                        } else if process.name.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                            process.cmdline.as_ref()
+                                .and_then(|c| c.split_whitespace().next())
+                                .and_then(|s| s.rsplit('/').next())
+                                .unwrap_or(&process.name)
+                                .to_string()
+                        } else {
+                            process.name.clone()
+                        };
+                        known.insert(process.pid, stored_name);
+                    }
+                }
+                
+                // Check for exited processes
+                let exited: Vec<(u32, String)> = known.iter()
+                    .filter(|(pid, _)| !current_pids.contains(pid))
+                    .map(|(pid, name)| (*pid, name.clone()))
+                    .collect();
+                
+                for (pid, name) in exited {
+                    if pids.contains(&pid) {
+                        let timestamp = Local::now().format("%H:%M:%S%.3f");
+                        println!("[{}] 💀 EXIT  PID:{} {}", timestamp, pid, name);
+                        pids.remove(&pid);
+                    }
+                    known.remove(&pid);
+                }
+            }
+            drop(state_lock);
+        }
+    });
+    
+    // Spawn polling task for network connections
+    let tracked_pids_clone = tracked_pids.clone();
+    let known_connections_clone = known_connections.clone();
+    let known_processes_clone1 = known_processes.clone();
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
+        loop {
+            interval.tick().await;
+            
+            let state_lock = state_clone.read();
+            if let Ok(connections) = state_lock.network_monitor.snapshot() {
+                let pids = tracked_pids_clone.read();
+                let mut known = known_connections_clone.write();
+                let processes = known_processes_clone1.read();
+                
+                for conn in &connections {
+                    if pids.contains(&conn.pid) {
+                        let remote_addr = conn.remote_addr.as_deref().unwrap_or("").to_string();
+                        let remote_port = conn.remote_port.unwrap_or(0);
+                        let key = (conn.pid, remote_addr.clone(), remote_port);
+                        
+                        if !known.contains(&key) && !remote_addr.is_empty() && remote_port > 0 {
+                            known.insert(key);
+                            let timestamp = Local::now().format("%H:%M:%S%.3f");
+                            let proc_name = processes.get(&conn.pid).map(|s| s.as_str()).unwrap_or("?");
+                            let local_addr = conn.local_addr.as_deref().unwrap_or("?");
+                            let local_port = conn.local_port.map(|p| p.to_string()).unwrap_or_else(|| "?".to_string());
+                            println!(
+                                "[{}] 🌐 NET   PID:{} {} {:?} {}:{} → {}:{}",
+                                timestamp,
+                                conn.pid,
+                                proc_name,
+                                conn.protocol,
+                                local_addr,
+                                local_port,
+                                remote_addr,
+                                remote_port
+                            );
+                        }
+                    }
+                }
+            }
+            drop(state_lock);
+        }
+    });
+    
+    // Spawn polling task for file operations
+    let tracked_pids_clone = tracked_pids.clone();
+    let known_files_clone = known_files.clone();
+    let known_processes_clone2 = known_processes.clone();
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(1000));
+        loop {
+            interval.tick().await;
+            
+            let state_lock = state_clone.read();
+            if let Ok(files) = state_lock.file_monitor.snapshot() {
+                let pids = tracked_pids_clone.read();
+                let mut known = known_files_clone.write();
+                let processes = known_processes_clone2.read();
+                
+                for file_op in &files {
+                    if pids.contains(&file_op.pid) {
+                        let key = (file_op.pid, file_op.path.clone());
+                        
+                        if !known.contains(&key) {
+                            known.insert(key);
+                            let timestamp = Local::now().format("%H:%M:%S%.3f");
+                            let proc_name = processes.get(&file_op.pid).map(|s| s.as_str()).unwrap_or("?");
+                            let op_icon = match file_op.operation {
+                                roea_common::FileOperation::Open => "📂",
+                                roea_common::FileOperation::Read => "📖",
+                                roea_common::FileOperation::Write => "✏️ ",
+                                roea_common::FileOperation::Create => "🆕",
+                                roea_common::FileOperation::Delete => "🗑️ ",
+                                roea_common::FileOperation::Rename => "📝",
+                            };
+                            println!(
+                                "[{}] {} FILE  PID:{} {} {:?} {}",
+                                timestamp,
+                                op_icon,
+                                file_op.pid,
+                                proc_name,
+                                file_op.operation,
+                                file_op.path
+                            );
+                        }
+                    }
+                }
+            }
+            drop(state_lock);
+        }
+    });
 }

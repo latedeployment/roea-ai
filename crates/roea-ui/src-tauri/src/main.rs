@@ -33,14 +33,19 @@ async fn connect_to_agent(
     address: Option<String>,
 ) -> Result<bool, String> {
     let addr = address.unwrap_or_else(|| "http://127.0.0.1:50051".to_string());
+    tracing::info!("Connecting to agent at {}", addr);
 
     match AgentClient::connect(&addr).await {
         Ok(client) => {
+            tracing::info!("Successfully connected to agent");
             let mut guard = state.client.write().await;
             *guard = Some(client);
             Ok(true)
         }
-        Err(e) => Err(format!("Failed to connect: {}", e)),
+        Err(e) => {
+            tracing::error!("Failed to connect to agent: {}", e);
+            Err(format!("Failed to connect: {}", e))
+        }
     }
 }
 

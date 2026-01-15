@@ -35,6 +35,7 @@ use uuid::Uuid;
 
 use roea_common::events::ProcessInfo;
 use roea_common::{ProcessEvent, ProcessEventType};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 // Include generated skeleton
 mod process_monitor_skel {
@@ -173,6 +174,9 @@ impl EbpfProcessMonitor {
 
         info!("eBPF programs attached successfully");
 
+        // Scan existing processes using sysinfo before starting event polling
+        self.scan_existing_processes();
+
         // Set up ring buffer polling
         let processes = self.processes.clone();
         let event_tx = self.event_tx.clone();
@@ -184,6 +188,50 @@ impl EbpfProcessMonitor {
 
         self.running = true;
         Ok(())
+    }
+
+    /// Scan existing processes using sysinfo to populate initial state
+    fn scan_existing_processes(&self) {
+        info!("Scanning existing processes for initial state...");
+        
+        let mut system = System::new();
+        let refresh_kind = ProcessRefreshKind::nothing()
+            .with_cmd(UpdateKind::Always)
+            .with_exe(UpdateKind::Always)
+            .with_user(UpdateKind::Always);
+        
+        system.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh_kind);
+        
+        let mut processes = self.processes.write();
+        let mut count = 0;
+        
+        for (pid, proc) in system.processes() {
+            let pid = pid.as_u32();
+            let cmdline = proc.cmd().iter()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            
+            let process_info = ProcessInfo {
+                id: Uuid::new_v4(),
+                pid,
+                ppid: proc.parent().map(|p| p.as_u32()),
+                name: proc.name().to_string_lossy().to_string(),
+                cmdline: if cmdline.is_empty() { None } else { Some(cmdline) },
+                exe_path: proc.exe().map(|p| p.to_string_lossy().to_string()),
+                agent_type: None,
+                start_time: DateTime::from_timestamp(proc.start_time() as i64, 0)
+                    .unwrap_or_default(),
+                end_time: None,
+                user: proc.user_id().map(|u| format!("{:?}", u)),
+                cwd: proc.cwd().map(|p| p.to_string_lossy().to_string()),
+            };
+            
+            processes.insert(pid, process_info);
+            count += 1;
+        }
+        
+        info!("Loaded {} existing processes into eBPF monitor state", count);
     }
 
     /// Stop the eBPF monitor
