@@ -59,20 +59,17 @@ export interface AgentWithCount {
   count: number;
 }
 
-// Graph node for D3 visualization
-export interface ProcessNode extends d3.SimulationNodeDatum {
-  id: string;
-  pid: number;
-  ppid: number;
-  name: string;
-  agentType: string;
-  isAgent: boolean;
-  isActive?: boolean;
-  connectionCount?: number;
-}
+// Event types for the event stream
+export type EventType = "FILE_READ" | "FILE_WRITE" | "FILE_DELETE" | "NETWORK" | "SPAWN" | "EXIT";
 
-export interface ProcessLink extends d3.SimulationLinkDatum<ProcessNode> {
-  source: ProcessNode | string;
-  target: ProcessNode | string;
-  type?: "parent-child" | "network";
+export interface Event {
+  id: string;
+  timestamp: number;
+  processId: string;
+  pid: number;
+  processName: string;
+  agentType: string;
+  eventType: EventType;
+  details: string;
+  severity: "info" | "warning" | "suspicious";
 }

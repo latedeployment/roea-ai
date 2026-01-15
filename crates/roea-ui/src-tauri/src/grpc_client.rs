@@ -134,4 +134,35 @@ impl AgentClient {
             })
             .collect())
     }
+
+    /// Get file operations
+    pub async fn get_file_ops(&self) -> Result<Vec<Value>> {
+        let mut client = self.inner.clone();
+        let request = QueryRequest {
+            start_time: 0,
+            end_time: 0,
+            agent_types: vec![],
+            process_name_pattern: String::new(),
+            limit: 500,
+            offset: 0,
+        };
+
+        let response = client.query_file_ops(request).await?;
+        let file_ops = response.into_inner().file_ops;
+
+        Ok(file_ops
+            .into_iter()
+            .map(|f| {
+                json!({
+                    "id": f.id,
+                    "processId": f.process_id,
+                    "pid": f.pid,
+                    "operation": f.operation,
+                    "path": f.path,
+                    "newPath": f.new_path,
+                    "timestamp": f.timestamp,
+                })
+            })
+            .collect())
+    }
 }

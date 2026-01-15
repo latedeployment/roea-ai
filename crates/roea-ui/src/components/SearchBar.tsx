@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Search, X, Download, Filter } from "lucide-react";
+import { Search, X, Download, Filter, FileText, Globe, Terminal } from "lucide-react";
 import { Process } from "../lib/types";
 
 interface SearchBarProps {
@@ -14,6 +14,13 @@ interface SearchFilters {
   showActive: boolean;
   showExited: boolean;
   pidRange: { min?: number; max?: number };
+  eventTypes: {
+    files: boolean;
+    network: boolean;
+    processes: boolean;
+  };
+  pathFilter: string;
+  ipFilter: string;
 }
 
 export function SearchBar({
@@ -27,6 +34,13 @@ export function SearchBar({
     showActive: true,
     showExited: true,
     pidRange: {},
+    eventTypes: {
+      files: true,
+      network: true,
+      processes: true,
+    },
+    pathFilter: "",
+    ipFilter: "",
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -83,6 +97,13 @@ export function SearchBar({
       showActive: true,
       showExited: true,
       pidRange: {},
+      eventTypes: {
+        files: true,
+        network: true,
+        processes: true,
+      },
+      pathFilter: "",
+      ipFilter: "",
     });
   }, []);
 
@@ -104,7 +125,12 @@ export function SearchBar({
     !filters.showActive ||
     !filters.showExited ||
     filters.pidRange.min !== undefined ||
-    filters.pidRange.max !== undefined;
+    filters.pidRange.max !== undefined ||
+    !filters.eventTypes.files ||
+    !filters.eventTypes.network ||
+    !filters.eventTypes.processes ||
+    filters.pathFilter ||
+    filters.ipFilter;
 
   return (
     <div className="search-bar">
@@ -113,7 +139,7 @@ export function SearchBar({
         <input
           type="text"
           className="search-input"
-          placeholder="Search processes, paths, PIDs..."
+          placeholder="Search files, IPs, processes... (e.g., path:/home file:*.rs ip:142.250)"
           value={filters.query}
           onChange={handleQueryChange}
         />
@@ -155,6 +181,54 @@ export function SearchBar({
 
       {showAdvanced && (
         <div className="advanced-filters">
+          <div className="filter-section">
+            <div className="filter-title">Event Types</div>
+            <div className="filter-options">
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={filters.eventTypes.files}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      eventTypes: { ...prev.eventTypes, files: e.target.checked },
+                    }))
+                  }
+                />
+                <FileText size={12} />
+                <span>Files</span>
+              </label>
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={filters.eventTypes.network}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      eventTypes: { ...prev.eventTypes, network: e.target.checked },
+                    }))
+                  }
+                />
+                <Globe size={12} />
+                <span>Network</span>
+              </label>
+              <label className="filter-checkbox">
+                <input
+                  type="checkbox"
+                  checked={filters.eventTypes.processes}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      eventTypes: { ...prev.eventTypes, processes: e.target.checked },
+                    }))
+                  }
+                />
+                <Terminal size={12} />
+                <span>Processes</span>
+              </label>
+            </div>
+          </div>
+
           <div className="filter-section">
             <div className="filter-title">Agent Types</div>
             <div className="filter-options">
@@ -205,35 +279,30 @@ export function SearchBar({
           </div>
 
           <div className="filter-section">
-            <div className="filter-title">PID Range</div>
-            <div className="filter-range">
+            <div className="filter-title">Path Filter</div>
+            <div className="filter-input-group">
               <input
-                type="number"
-                placeholder="Min"
-                value={filters.pidRange.min ?? ""}
+                type="text"
+                className="filter-text-input"
+                placeholder="/home/user/*.rs"
+                value={filters.pathFilter}
                 onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    pidRange: {
-                      ...prev.pidRange,
-                      min: e.target.value ? parseInt(e.target.value) : undefined,
-                    },
-                  }))
+                  setFilters((prev) => ({ ...prev, pathFilter: e.target.value }))
                 }
               />
-              <span>-</span>
+            </div>
+          </div>
+
+          <div className="filter-section">
+            <div className="filter-title">IP Filter</div>
+            <div className="filter-input-group">
               <input
-                type="number"
-                placeholder="Max"
-                value={filters.pidRange.max ?? ""}
+                type="text"
+                className="filter-text-input"
+                placeholder="142.250 or api.anthropic.com"
+                value={filters.ipFilter}
                 onChange={(e) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    pidRange: {
-                      ...prev.pidRange,
-                      max: e.target.value ? parseInt(e.target.value) : undefined,
-                    },
-                  }))
+                  setFilters((prev) => ({ ...prev, ipFilter: e.target.value }))
                 }
               />
             </div>

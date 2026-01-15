@@ -97,6 +97,18 @@ async fn get_connections(state: State<'_, AppState>) -> Result<Vec<serde_json::V
         .map_err(|e| format!("Failed to get connections: {}", e))
 }
 
+/// Get file operations
+#[tauri::command]
+async fn get_file_ops(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("Not connected to agent")?;
+
+    client
+        .get_file_ops()
+        .await
+        .map_err(|e| format!("Failed to get file ops: {}", e))
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -109,6 +121,7 @@ fn main() {
             get_processes,
             get_signatures,
             get_connections,
+            get_file_ops,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
