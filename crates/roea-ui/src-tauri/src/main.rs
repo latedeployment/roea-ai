@@ -49,6 +49,23 @@ async fn connect_to_agent(
     }
 }
 
+/// Ping the agent daemon to check if connection is still alive
+/// Returns true if connected and responsive, false otherwise
+#[tauri::command]
+async fn ping(state: State<'_, AppState>) -> Result<bool, String> {
+    let guard = state.client.read().await;
+    match guard.as_ref() {
+        Some(client) => {
+            let is_alive = client.ping().await;
+            if !is_alive {
+                tracing::warn!("Agent ping failed - connection may be lost");
+            }
+            Ok(is_alive)
+        }
+        None => Ok(false),
+    }
+}
+
 /// Get agent daemon status
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
@@ -117,6 +134,7 @@ fn main() {
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             connect_to_agent,
+            ping,
             get_status,
             get_processes,
             get_signatures,

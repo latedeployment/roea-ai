@@ -37,10 +37,28 @@ function App() {
   }, []);
 
   // Refresh data periodically when connected
+  // Also check connection health via ping
   useEffect(() => {
     if (!connected) return;
 
-    const refresh = () => {
+    const refresh = async () => {
+      // First, check if agent is still alive
+      try {
+        const isAlive = await invoke<boolean>("ping", {});
+        if (!isAlive) {
+          console.warn("Agent ping failed - marking as disconnected");
+          setConnected(false);
+          setStatus(null);
+          return;
+        }
+      } catch (e) {
+        console.error("Ping failed:", e);
+        setConnected(false);
+        setStatus(null);
+        return;
+      }
+
+      // Agent is alive, refresh data
       refreshStatus();
       refreshProcesses();
       refreshConnections();

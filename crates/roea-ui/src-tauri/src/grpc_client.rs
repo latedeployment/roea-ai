@@ -30,6 +30,16 @@ impl AgentClient {
         })
     }
 
+    /// Ping the agent daemon to check if it's still alive
+    /// Returns true if the agent responds, false otherwise
+    pub async fn ping(&self) -> bool {
+        let mut client = self.inner.clone();
+        match client.get_status(Empty {}).await {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
     /// Get daemon status
     pub async fn get_status(&self) -> Result<Value> {
         let mut client = self.inner.clone();
