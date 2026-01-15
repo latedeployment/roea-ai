@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Header } from "./components/Header";
-import { Sidebar } from "./components/Sidebar";
 import { SearchBar } from "./components/SearchBar";
-import { ProcessGraph } from "./components/ProcessGraph";
+import { ProcessTree } from "./components/ProcessTree";
+import { EventTable } from "./components/EventTable";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { StatsBar } from "./components/StatsBar";
-import { Process, Connection, AgentSignature, AgentStatus } from "./lib/types";
+import { Process, Connection, FileOp, AgentSignature, AgentStatus } from "./lib/types";
 
 // Helper to trigger file download in browser
 function downloadFile(content: string, filename: string, mimeType: string) {
@@ -26,10 +26,10 @@ function App() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [processes, setProcesses] = useState<Process[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [fileOps, setFileOps] = useState<FileOp[]>([]);
   const [filteredProcesses, setFilteredProcesses] = useState<Process[]>([]);
   const [signatures, setSignatures] = useState<AgentSignature[]>([]);
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
-  const [selectedAgentType, setSelectedAgentType] = useState<string | null>(null);
 
   // Connect to agent on mount
   useEffect(() => {
@@ -44,6 +44,7 @@ function App() {
       refreshStatus();
       refreshProcesses();
       refreshConnections();
+      refreshFileOps();
     };
 
     refresh();
@@ -95,6 +96,15 @@ function App() {
     }
   };
 
+  const refreshFileOps = async () => {
+    try {
+      const result = await invoke<FileOp[]>("get_file_ops", {});
+      setFileOps(result);
+    } catch (e) {
+      console.error("Failed to get file ops:", e);
+    }
+  };
+
   const refreshSignatures = async () => {
     try {
       const result = await invoke<AgentSignature[]>("get_signatures", {});
@@ -104,10 +114,8 @@ function App() {
     }
   };
 
-  // Get processes filtered by sidebar agent type selection
-  const agentFilteredProcesses = selectedAgentType
-    ? processes.filter((p) => p.agentType === selectedAgentType)
-    : processes;
+  // All processes (no sidebar filter needed anymore)
+  const agentFilteredProcesses = processes;
 
   // Get agent-specific processes grouped
   const agentProcesses = signatures.map((sig) => ({
@@ -164,20 +172,21 @@ function App() {
         onExport={handleExport}
       />
       <div className="main-content">
-        <Sidebar
-          agents={agentProcesses}
-          selectedAgent={selectedAgentType}
-          onSelectAgent={setSelectedAgentType}
-        />
-        <ProcessGraph
+        <ProcessTree
           processes={displayProcesses}
-          connections={connections}
           selectedProcess={selectedProcess}
           onSelectProcess={setSelectedProcess}
+        />
+        <EventTable
+          processes={processes}
+          connections={connections}
+          fileOps={fileOps}
         />
         {selectedProcess && (
           <DetailsPanel
             process={selectedProcess}
+            connections={connections}
+            fileOps={fileOps}
             onClose={() => setSelectedProcess(null)}
           />
         )}
@@ -186,6 +195,8 @@ function App() {
         processCount={processes.length}
         agentCount={agentProcesses.filter((a) => a.count > 0).length}
         eventsCollected={status?.eventsCollected ?? 0}
+        fileOpsCount={fileOps.length}
+        connectionsCount={connections.length}
       />
     </div>
   );
