@@ -2,14 +2,26 @@
 //!
 //! A cross-platform daemon that monitors AI coding agents and provides
 //! telemetry data via gRPC to the roea-ai UI.
+//!
+//! # TUI Mode
+//!
+//! Run with `--tui` flag for a modern terminal interface that displays
+//! real-time monitoring without opening a network port.
+//!
+//! # File Protection
+//!
+//! Use `--protect-config <file.toml>` to monitor sensitive files and
+//! generate alerts when AI agents access them.
 
 mod file;
 mod grpc;
 mod monitor;
 mod network;
 mod osquery;
+pub mod protection;
 mod storage;
 mod telemetry;
+mod tui;
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -44,8 +56,14 @@ struct Config {
     otlp_endpoint: Option<String>,
     /// Enable telemetry
     telemetry_enabled: bool,
-    /// Show live events for tracked AI agents
+    /// Show live events for tracked AI agents (legacy text mode)
     show_events: bool,
+    /// Enable TUI mode (modern terminal interface)
+    tui_mode: bool,
+    /// Path to protection config file
+    protect_config: Option<PathBuf>,
+    /// Generate example protection config and exit
+    gen_protect_config: bool,
 }
 
 impl Default for Config {
@@ -61,6 +79,9 @@ impl Default for Config {
             otlp_endpoint: None,
             telemetry_enabled: true,
             show_events: false,
+            tui_mode: false,
+            protect_config: None,
+            gen_protect_config: false,
         }
     }
 }
@@ -72,17 +93,31 @@ impl Config {
 
         // Parse command line arguments
         let args: Vec<String> = std::env::args().collect();
-        for (i, arg) in args.iter().enumerate() {
-            match arg.as_str() {
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
                 "--show-events" | "-e" => {
                     config.show_events = true;
+                }
+                "--tui" | "-t" => {
+                    config.tui_mode = true;
                 }
                 "--listen" | "-l" => {
                     if let Some(addr) = args.get(i + 1) {
                         if let Ok(parsed) = addr.parse() {
                             config.listen_addr = parsed;
                         }
+                        i += 1;
                     }
+                }
+                "--protect-config" | "-p" => {
+                    if let Some(path) = args.get(i + 1) {
+                        config.protect_config = Some(PathBuf::from(path));
+                        i += 1;
+                    }
+                }
+                "--gen-protect-config" => {
+                    config.gen_protect_config = true;
                 }
                 "--help" | "-h" => {
                     print_help();
@@ -90,6 +125,7 @@ impl Config {
                 }
                 _ => {}
             }
+            i += 1;
         }
 
         // Environment variables (can override CLI)
@@ -121,6 +157,10 @@ impl Config {
             config.telemetry_enabled = enabled.parse().unwrap_or(true);
         }
 
+        if let Ok(path) = std::env::var("ROEA_PROTECT_CONFIG") {
+            config.protect_config = Some(PathBuf::from(path));
+        }
+
         config
     }
 }
@@ -128,20 +168,43 @@ impl Config {
 fn print_help() {
     println!("roea-agent - AI Agent Monitoring Daemon");
     println!();
+    println!("A cross-platform daemon that monitors AI coding agents and provides");
+    println!("real-time observability through a modern TUI or gRPC API.");
+    println!();
     println!("USAGE:");
     println!("    roea-agent [OPTIONS]");
     println!();
+    println!("DISPLAY MODES:");
+    println!("    -t, --tui                   Modern terminal UI (no network port)");
+    println!("    -e, --show-events           Simple text event stream");
+    println!("    (default)                   gRPC server mode for UI connection");
+    println!();
     println!("OPTIONS:");
-    println!("    -e, --show-events    Print live events (process, network, file) for tracked AI agents");
-    println!("    -l, --listen <ADDR>  Address to bind gRPC server (default: 127.0.0.1:50051)");
-    println!("    -h, --help           Print this help message");
+    println!("    -l, --listen <ADDR>         Address to bind gRPC server (default: 127.0.0.1:50051)");
+    println!("    -p, --protect-config <FILE> Path to protection config (TOML)");
+    println!("    --gen-protect-config        Generate example protection config and exit");
+    println!("    -h, --help                  Print this help message");
+    println!();
+    println!("FILE PROTECTION:");
+    println!("    Monitor sensitive files and alert when AI agents access them.");
+    println!("    Use --gen-protect-config to create an example config file.");
+    println!();
+    println!("    Example:");
+    println!("      roea-agent --tui --protect-config ~/.config/roea/protect.toml");
     println!();
     println!("ENVIRONMENT VARIABLES:");
-    println!("    ROEA_LISTEN_ADDR       gRPC server address");
-    println!("    ROEA_DB_PATH           Database file path");
-    println!("    ROEA_LOG_LEVEL         Log level (trace, debug, info, warn, error)");
-    println!("    ROEA_OTLP_ENDPOINT     OpenTelemetry OTLP endpoint");
-    println!("    ROEA_TELEMETRY_ENABLED Enable/disable telemetry (true/false)");
+    println!("    ROEA_LISTEN_ADDR        gRPC server address");
+    println!("    ROEA_DB_PATH            Database file path");
+    println!("    ROEA_LOG_LEVEL          Log level (trace, debug, info, warn, error)");
+    println!("    ROEA_OTLP_ENDPOINT      OpenTelemetry OTLP endpoint");
+    println!("    ROEA_TELEMETRY_ENABLED  Enable/disable telemetry (true/false)");
+    println!("    ROEA_PROTECT_CONFIG     Protection config file path");
+    println!();
+    println!("EXAMPLES:");
+    println!("    roea-agent --tui                    # Run with modern TUI");
+    println!("    roea-agent --show-events            # Simple event stream");
+    println!("    roea-agent                          # gRPC server (for UI)");
+    println!("    roea-agent --tui -p protect.toml    # TUI with file protection");
 }
 
 #[tokio::main]
@@ -149,18 +212,49 @@ async fn main() -> Result<()> {
     // Load configuration
     let config = Config::from_env();
 
-    // Initialize logging
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("roea_agent={}", config.log_level).into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Handle --gen-protect-config (generate example and exit)
+    if config.gen_protect_config {
+        println!("{}", protection::ProtectionConfig::example_toml());
+        return Ok(());
+    }
 
-    tracing::info!("Starting roea-agent daemon");
-    tracing::info!("Platform: {}", std::env::consts::OS);
-    tracing::info!("Listen address: {}", config.listen_addr);
+    // Load protection config if specified
+    let protection_config = if let Some(ref path) = config.protect_config {
+        match protection::ProtectionConfig::from_file(path) {
+            Ok(cfg) => {
+                eprintln!("Loaded protection config from {:?} ({} items)", path, cfg.protected_count());
+                Some(cfg)
+            }
+            Err(e) => {
+                eprintln!("Error loading protection config: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // Use default protection in TUI mode
+        if config.tui_mode {
+            Some(protection::ProtectionConfig::default())
+        } else {
+            None
+        }
+    };
+
+    // In TUI mode, don't initialize logging to file (would interfere with display)
+    if !config.tui_mode {
+        tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| format!("roea_agent={}", config.log_level).into()),
+            )
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+
+        tracing::info!("Starting roea-agent daemon");
+        tracing::info!("Platform: {}", std::env::consts::OS);
+        if !config.show_events {
+            tracing::info!("Listen address: {}", config.listen_addr);
+        }
+    }
 
     // Initialize storage
     let storage_config = StorageConfig {
@@ -172,11 +266,13 @@ async fn main() -> Result<()> {
     let storage = Storage::new(storage_config).context("Failed to initialize storage")?;
     let storage = Arc::new(storage);
 
-    tracing::info!("Storage initialized");
+    if !config.tui_mode {
+        tracing::info!("Storage initialized");
+    }
 
-    // Initialize telemetry if enabled
+    // Initialize telemetry if enabled (and not in TUI mode for cleaner display)
     let mut telemetry_service = None;
-    if config.telemetry_enabled {
+    if config.telemetry_enabled && !config.tui_mode {
         let telemetry_config = telemetry::TelemetryConfig {
             service_name: "roea-agent".to_string(),
             service_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -209,7 +305,9 @@ async fn main() -> Result<()> {
             .start()
             .context("Failed to start process monitor")?;
     }
-    tracing::info!("Process monitor started");
+    if !config.tui_mode {
+        tracing::info!("Process monitor started");
+    }
 
     // Scan existing processes for AI agents
     {
@@ -221,8 +319,10 @@ async fn main() -> Result<()> {
     {
         let mut state_lock = state.write();
         if let Err(e) = state_lock.network_monitor.start() {
-            tracing::warn!("Network monitor failed to start: {} (continuing without it)", e);
-        } else {
+            if !config.tui_mode {
+                tracing::warn!("Network monitor failed to start: {} (continuing without it)", e);
+            }
+        } else if !config.tui_mode {
             tracing::info!("Network monitor started");
         }
     }
@@ -231,18 +331,32 @@ async fn main() -> Result<()> {
     {
         let mut state_lock = state.write();
         if let Err(e) = state_lock.file_monitor.start() {
-            tracing::warn!("File monitor failed to start: {} (continuing without it)", e);
-        } else {
+            if !config.tui_mode {
+                tracing::warn!("File monitor failed to start: {} (continuing without it)", e);
+            }
+        } else if !config.tui_mode {
             tracing::info!("File monitor started");
         }
     }
 
-    // Start event streaming if --show-events is enabled
-    if config.show_events {
-        start_event_streaming(state.clone());
+    // === MODE SELECTION ===
+    // TUI mode: Run modern terminal interface (no network port)
+    if config.tui_mode {
+        return tui::run_tui(state, protection_config)
+            .await
+            .map_err(|e| anyhow::anyhow!("TUI error: {}", e));
     }
 
-    // Create gRPC service
+    // Legacy event streaming mode
+    if config.show_events {
+        start_event_streaming(state.clone());
+        // Keep running forever in event mode
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        }
+    }
+
+    // Default: gRPC server mode
     let service = RoeaAgentService::new(state.clone());
 
     // Start gRPC server

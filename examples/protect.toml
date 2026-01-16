@@ -1,0 +1,90 @@
+# roea-ai Protection Configuration
+# ================================
+# This file defines which files and directories should trigger alerts
+# when accessed by AI coding agents.
+#
+# Usage:
+#   roea-agent --tui --protect-config /path/to/protect.toml
+
+# Include default system sensitive files (/etc/passwd, /etc/shadow, etc.)
+include_defaults = true
+
+# Alert severity: "info", "warning", or "critical"
+alert_severity = "critical"
+
+# Prevention mode (requires additional privileges)
+# When enabled, attempts to block access rather than just alerting
+# See docs/PREVENTION_MODE.md for implementation details
+prevention_mode = false
+
+# Optional: Log all protected file accesses to a file
+# log_file = "/var/log/roea-protection.log"
+
+# Specific files to protect
+files = [
+    # SSH keys
+    "~/.ssh/id_rsa",
+    "~/.ssh/id_ed25519",
+    "~/.ssh/id_ecdsa",
+
+    # Cloud credentials
+    "~/.aws/credentials",
+    "~/.aws/config",
+    "~/.config/gcloud/credentials.db",
+    "~/.azure/accessTokens.json",
+
+    # Package manager credentials
+    "~/.npmrc",
+    "~/.pypirc",
+    "~/.gem/credentials",
+
+    # Git credentials
+    "~/.git-credentials",
+    "~/.config/gh/hosts.yml",
+
+    # Database files
+    "~/.pgpass",
+    "~/.my.cnf",
+    "~/.mongorc.js",
+]
+
+# Directories to protect (all files under these trigger alerts)
+directories = [
+    "~/.ssh",
+    "~/.gnupg",
+    "~/.aws",
+    "~/.config/gcloud",
+    "~/secrets",
+    "/etc/ssl/private",
+]
+
+# Glob patterns for protected files
+patterns = [
+    # Environment files (often contain secrets)
+    "**/.env",
+    "**/.env.*",
+    "**/.env.local",
+    "**/.env.production",
+
+    # Secret/credential files
+    "**/secrets.yaml",
+    "**/secrets.json",
+    "**/credentials.json",
+    "**/*secret*",
+    "**/*credential*",
+
+    # Certificate and key files
+    "**/*.pem",
+    "**/*.key",
+    "**/*.p12",
+    "**/*.pfx",
+
+    # SSH key patterns
+    "**/id_rsa*",
+    "**/id_ed25519*",
+    "**/id_ecdsa*",
+
+    # Kubernetes secrets
+    "**/.kube/config",
+    "**/kubeconfig*",
+]

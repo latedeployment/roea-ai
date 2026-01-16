@@ -12,8 +12,10 @@ pub mod monitor;
 pub mod network;
 pub mod observability;
 pub mod osquery;
+pub mod protection;
 pub mod storage;
 pub mod telemetry;
+pub mod tui;
 
 pub use file::FileMonitorService;
 pub use grpc::{AgentState, RoeaAgentService};
