@@ -61,6 +61,13 @@ opentelemetry-semantic-conventions = { workspace = true }
 # Error tracking
 sentry = { workspace = true }
 
+# TUI
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+
+# Glob pattern matching
+glob = { workspace = true }
+
 # Unix-specific
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
