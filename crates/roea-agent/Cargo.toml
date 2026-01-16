@@ -68,6 +68,18 @@ crossterm = { workspace = true }
 # Glob pattern matching
 glob = { workspace = true }
 
+# HTTP client for notifications
+reqwest = { workspace = true }
+
+# Syslog
+syslog = { workspace = true }
+
+# Hostname detection
+hostname = { workspace = true }
+
+# Async trait
+async-trait = { workspace = true }
+
 # Unix-specific
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -1,0 +1,192 @@
+# roea-ai Notification Configuration
+# =====================================
+# Configure alert notifications for protected file access events.
+# Enable one or more backends to receive alerts.
+#
+# Usage:
+#   roea-agent --tui --notify-config /path/to/notify.toml
+
+# Global notification settings
+enabled = true
+
+# Minimum severity level to trigger notifications
+# Options: "info", "warning", "alert", "critical"
+min_severity = "alert"
+
+# Rate limiting: minimum seconds between notifications (prevents spam)
+rate_limit_seconds = 5
+
+# Send a test notification when the agent starts
+send_test_on_startup = false
+
+# ============================================================================
+# Slack
+# ============================================================================
+# Webhook-based notifications with rich formatting
+# Get a webhook URL from: https://api.slack.com/messaging/webhooks
+
+[slack]
+enabled = false
+webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+# Optional: Override channel (uses webhook default if not set)
+# channel = "#security-alerts"
+username = "roea-ai"
+icon_emoji = ":shield:"
+
+# ============================================================================
+# Discord
+# ============================================================================
+# Webhook-based notifications with embeds
+# Create a webhook in: Server Settings → Integrations → Webhooks
+
+[discord]
+enabled = false
+webhook_url = "https://discord.com/api/webhooks/YOUR/WEBHOOK/URL"
+username = "roea-ai"
+# Optional: Custom avatar URL
+# avatar_url = "https://example.com/avatar.png"
+
+# ============================================================================
+# ntfy.sh
+# ============================================================================
+# Simple HTTP push notifications - perfect for mobile alerts!
+# Use the public server (ntfy.sh) or self-host your own
+# Docs: https://ntfy.sh/docs/
+#
+# Quick start:
+#   1. Install ntfy app on your phone
+#   2. Subscribe to your topic (e.g., "roea-ai-alerts-myname")
+#   3. Set the topic below and enable
+
+[ntfy]
+enabled = false
+server = "https://ntfy.sh"
+topic = "roea-ai-alerts"
+# Optional: Authentication for private topics
+# token = "tk_your_token_here"
+# Or use basic auth:
+# username = "your_username"
+# password = "your_password"
+
+# ============================================================================
+# Telegram
+# ============================================================================
+# Bot API notifications
+#
+# Setup:
+#   1. Create a bot with @BotFather (send /newbot)
+#   2. Copy the bot token
+#   3. Start a chat with your bot
+#   4. Get your chat_id by messaging @userinfobot or @getidsbot
+
+[telegram]
+enabled = false
+bot_token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+chat_id = "123456789"
+parse_mode = "HTML"
+# Disable notification sound for less urgent alerts
+disable_notification = false
+
+# ============================================================================
+# PagerDuty
+# ============================================================================
+# Incident management integration - for on-call alerting
+#
+# Setup:
+#   1. Go to Services → Service Directory → [Service] → Integrations
+#   2. Add "Events API v2" integration
+#   3. Copy the routing key
+
+[pagerduty]
+enabled = false
+routing_key = "YOUR_ROUTING_KEY"
+source = "roea-ai"
+# Optional: Component and class for categorization
+# component = "file-protection"
+class = "security"
+
+# ============================================================================
+# Pushover
+# ============================================================================
+# Mobile push notifications with priority levels
+# Get tokens from: https://pushover.net/
+#
+# Features:
+#   - Critical alerts can bypass Do Not Disturb
+#   - Supports custom sounds
+#   - Works on iOS and Android
+
+[pushover]
+enabled = false
+token = "YOUR_APP_TOKEN"
+user_key = "YOUR_USER_KEY"
+# Optional: Send to specific device
+# device = "my-phone"
+# Optional: Custom notification sound (see https://pushover.net/api#sounds)
+# sound = "siren"
+
+# ============================================================================
+# Syslog
+# ============================================================================
+# System logging (local or remote)
+# Useful for SIEM integration (Splunk, ELK, Graylog, etc.)
+#
+# Facilities: kern, user, mail, daemon, auth, syslog, lpr, news, uucp, cron,
+#             local0-local7
+
+[syslog]
+enabled = false
+facility = "local0"
+app_name = "roea-ai"
+# Optional: Remote syslog server (uses local Unix socket if not set)
+# server = "syslog.example.com"
+# port = 514
+# use_tcp = false
+
+# ============================================================================
+# Generic Webhooks
+# ============================================================================
+# Custom HTTP webhooks for integration with other systems
+# Can define multiple webhooks for different endpoints
+#
+# Payload format (JSON):
+# {
+#   "id": "uuid",
+#   "timestamp": "2024-01-15T10:30:00Z",
+#   "severity": "critical",
+#   "title": "Protected File Access DETECTED",
+#   "message": "Process 'claude' attempted to read protected file...",
+#   "pid": 12345,
+#   "process_name": "claude",
+#   "path": "/etc/passwd",
+#   "operation": "read",
+#   "blocked": false,
+#   "hostname": "my-machine",
+#   "metadata": {}
+# }
+
+[[webhooks]]
+enabled = false
+url = "https://your-webhook-endpoint.com/alerts"
+method = "POST"
+# Optional: Custom headers
+# [webhooks.headers]
+# X-Custom-Header = "value"
+# Content-Type = "application/json"
+# Optional: Bearer token authentication
+# auth_token = "your_token"
+
+# Example: Second webhook for a different system (e.g., Datadog, Splunk HEC)
+# [[webhooks]]
+# enabled = false
+# url = "https://http-intake.logs.datadoghq.com/api/v2/logs"
+# method = "POST"
+# [webhooks.headers]
+# DD-API-KEY = "your_datadog_api_key"
+
+# Example: Splunk HTTP Event Collector
+# [[webhooks]]
+# enabled = false
+# url = "https://splunk.example.com:8088/services/collector/event"
+# method = "POST"
+# auth_token = "your_splunk_hec_token"

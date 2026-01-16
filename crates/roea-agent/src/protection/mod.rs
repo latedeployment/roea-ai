@@ -1,12 +1,15 @@
 //! File Protection Module
 //!
 //! This module provides configuration and monitoring for protected files and directories.
-//! When AI agents access protected paths, alerts are generated.
+//! When AI agents access protected paths, alerts are generated and notifications are sent.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+
+use crate::notification::{AlertNotification, NotificationConfig, NotificationManager};
 
 /// Default protected files that should trigger alerts
 pub const DEFAULT_PROTECTED_FILES: &[&str] = &[
@@ -67,6 +70,10 @@ pub struct ProtectionConfig {
     #[serde(default)]
     pub log_file: Option<PathBuf>,
 
+    /// Notification configuration
+    #[serde(default)]
+    pub notifications: Option<NotificationConfig>,
+
     /// Cached set of protected paths for quick lookup
     #[serde(skip)]
     protected_set: HashSet<PathBuf>,
@@ -94,6 +101,7 @@ impl Default for ProtectionConfig {
             alert_severity: "critical".to_string(),
             prevention_mode: false,
             log_file: None,
+            notifications: None,
             protected_set: HashSet::new(),
             protected_dirs_set: HashSet::new(),
         };
@@ -248,6 +256,39 @@ patterns = [
     "**/id_ed25519*",
     "**/.git-credentials",
 ]
+
+# ============================================================================
+# Notifications (optional)
+# ============================================================================
+# Configure where to send alerts when protected files are accessed.
+# For a full example, see examples/notify.toml
+
+[notifications]
+enabled = true
+min_severity = "alert"
+rate_limit_seconds = 5
+
+# Example: ntfy.sh (mobile push notifications)
+# [notifications.ntfy]
+# enabled = true
+# server = "https://ntfy.sh"
+# topic = "roea-ai-alerts"
+
+# Example: Slack
+# [notifications.slack]
+# enabled = true
+# webhook_url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+# Example: Discord
+# [notifications.discord]
+# enabled = true
+# webhook_url = "https://discord.com/api/webhooks/YOUR/WEBHOOK/URL"
+
+# Example: Syslog (for SIEM integration)
+# [notifications.syslog]
+# enabled = true
+# facility = "local0"
+# app_name = "roea-ai"
 "#
     }
 }
@@ -297,6 +338,120 @@ impl ProtectionEvent {
             self.operation,
             self.path
         )
+    }
+}
+
+/// Protection service that handles events and notifications
+pub struct ProtectionService {
+    /// Protection configuration
+    config: ProtectionConfig,
+    /// Notification manager
+    notification_manager: Option<Arc<NotificationManager>>,
+}
+
+impl ProtectionService {
+    /// Create a new protection service with the given configuration
+    pub fn new(config: ProtectionConfig) -> Self {
+        let notification_manager = config.notifications.as_ref().map(|nc| {
+            Arc::new(NotificationManager::new(nc.clone()))
+        });
+
+        Self {
+            config,
+            notification_manager,
+        }
+    }
+
+    /// Create a new protection service with a separate notification manager
+    pub fn with_notification_manager(
+        config: ProtectionConfig,
+        notification_manager: Arc<NotificationManager>,
+    ) -> Self {
+        Self {
+            config,
+            notification_manager: Some(notification_manager),
+        }
+    }
+
+    /// Get the protection configuration
+    pub fn config(&self) -> &ProtectionConfig {
+        &self.config
+    }
+
+    /// Check if a path is protected
+    pub fn is_protected(&self, path: &str) -> bool {
+        self.config.is_protected(path)
+    }
+
+    /// Handle a protection event and send notifications
+    pub async fn handle_event(&self, event: &ProtectionEvent) -> anyhow::Result<()> {
+        // Log the event
+        tracing::warn!(
+            target: "protection",
+            pid = event.pid,
+            process = %event.process_name,
+            path = %event.path,
+            operation = %event.operation,
+            severity = %event.severity,
+            blocked = event.blocked,
+            "Protected file access detected"
+        );
+
+        // Write to log file if configured
+        if let Some(ref log_path) = self.config.log_file {
+            if let Err(e) = self.write_to_log(log_path, event) {
+                tracing::error!("Failed to write to protection log: {}", e);
+            }
+        }
+
+        // Send notifications
+        if let Some(ref nm) = self.notification_manager {
+            let notification = AlertNotification::from_protection_event(event);
+            if let Err(e) = nm.notify(&notification).await {
+                tracing::error!("Failed to send notification: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Write event to log file
+    fn write_to_log(&self, path: &Path, event: &ProtectionEvent) -> std::io::Result<()> {
+        use std::io::Write;
+
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+
+        writeln!(file, "{}", event.to_log_line())?;
+        Ok(())
+    }
+
+    /// Send a test notification
+    pub async fn send_test_notification(&self) -> anyhow::Result<()> {
+        if let Some(ref nm) = self.notification_manager {
+            nm.send_test().await.map_err(|e| anyhow::anyhow!(e))
+        } else {
+            tracing::warn!("No notification manager configured");
+            Ok(())
+        }
+    }
+
+    /// Check if notifications are enabled
+    pub fn has_notifications(&self) -> bool {
+        self.notification_manager
+            .as_ref()
+            .map(|nm| nm.is_enabled())
+            .unwrap_or(false)
+    }
+
+    /// Get list of enabled notification backends
+    pub fn notification_backends(&self) -> Vec<&'static str> {
+        self.notification_manager
+            .as_ref()
+            .map(|nm| nm.enabled_backends())
+            .unwrap_or_default()
     }
 }
 

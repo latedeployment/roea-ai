@@ -10,6 +10,7 @@ pub mod file;
 pub mod grpc;
 pub mod monitor;
 pub mod network;
+pub mod notification;
 pub mod observability;
 pub mod osquery;
 pub mod protection;
@@ -21,6 +22,11 @@ pub use file::FileMonitorService;
 pub use grpc::{AgentState, RoeaAgentService};
 pub use monitor::ProcessMonitorService;
 pub use network::NetworkMonitorService;
+pub use notification::{
+    AlertNotification, NotificationBackend, NotificationConfig, NotificationManager,
+    NotificationSeverity,
+};
+pub use protection::{ProtectionConfig, ProtectionEvent, ProtectionService};
 pub use observability::{init_sentry, metrics, SentryConfig, SentryGuard};
 pub use osquery::{OsqueryConfig, OsqueryService};
 pub use storage::{Storage, StorageConfig};
