@@ -1,0 +1,27 @@
+/target/
+**/target/
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+.DS_Store
+Thumbs.db
+
+*.db
+*.db-wal
+*.db-shm
+
+*.log
+
+.env
+.env.local
+
+*.so
+*.dylib
+*.dll
+
+# eBPF generated files (machine-specific)
+crates/tuai/src/bpf/vmlinux.h

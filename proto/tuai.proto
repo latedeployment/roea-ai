@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package tuai;
+
+service TuaiAgent {
+  rpc WatchProcesses(WatchRequest) returns (stream ProcessEvent);
+  rpc QueryProcesses(QueryRequest) returns (QueryResponse);
+  rpc QueryConnections(QueryRequest) returns (ConnectionsResponse);
+  rpc QueryFileOps(QueryRequest) returns (FileOpsResponse);
+  rpc GetAgentSignatures(Empty) returns (SignaturesResponse);
+  rpc GetStatus(Empty) returns (StatusResponse);
+}
+
+message Empty {}
+
+message WatchRequest {
+  repeated string agent_types = 1;
+  bool include_existing = 2;
+}
+
+message QueryRequest {
+  int64 start_time = 1;
+  int64 end_time = 2;
+  repeated string agent_types = 3;
+  string process_name_pattern = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+
+message ProcessEvent {
+  enum EventType {
+    SPAWN = 0;
+    EXIT = 1;
+    UPDATE = 2;
+  }
+  EventType event_type = 1;
+  Process process = 2;
+  int64 timestamp = 3;
+}
+
+message Process {
+  string id = 1;
+  int32 pid = 2;
+  int32 ppid = 3;
+  string name = 4;
+  string cmdline = 5;
+  string exe_path = 6;
+  string agent_type = 7;
+  int64 start_time = 8;
+  int64 end_time = 9;
+  string user = 10;
+  string cwd = 11;
+  repeated Connection connections = 12;
+  repeated FileOp recent_file_ops = 13;
+}
+
+message Connection {
+  string id = 1;
+  string process_id = 2;
+  int32 pid = 3;
+  string protocol = 4;
+  string local_addr = 5;
+  int32 local_port = 6;
+  string remote_addr = 7;
+  int32 remote_port = 8;
+  string state = 9;
+  int64 timestamp = 10;
+}
+
+message FileOp {
+  string id = 1;
+  string process_id = 2;
+  int32 pid = 3;
+  string operation = 4;
+  string path = 5;
+  string new_path = 6;
+  int64 timestamp = 7;
+}
+
+message QueryResponse {
+  repeated Process processes = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+}
+
+message ConnectionsResponse {
+  repeated Connection connections = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+}
+
+message FileOpsResponse {
+  repeated FileOp file_ops = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+}
+
+message AgentSignature {
+  string name = 1;
+  string display_name = 2;
+  string icon = 3;
+  repeated string expected_endpoints = 4;
+  bool child_process_tracking = 5;
+}
+
+message SignaturesResponse {
+  repeated AgentSignature signatures = 1;
+}
+
+message StatusResponse {
+  bool running = 1;
+  string platform = 2;
+  bool elevated_privileges = 3;
+  int64 uptime_seconds = 4;
+  int64 processes_tracked = 5;
+  int64 events_collected = 6;
+}

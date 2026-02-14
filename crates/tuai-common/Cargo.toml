@@ -1,0 +1,15 @@
+[package]
+name = "tuai-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Common types and traits for tuai"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+futures-core = { workspace = true }

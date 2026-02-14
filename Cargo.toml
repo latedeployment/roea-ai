@@ -1,0 +1,78 @@
+[workspace]
+resolver = "2"
+members = ["crates/tuai", "crates/tuai-common"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["tuai contributors"]
+repository = "https://github.com/latedeployment/tuai"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.43", features = ["full"] }
+
+# gRPC
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+tonic-build = "0.12"
+
+# Storage
+duckdb = { version = "1.1", features = ["bundled"] }
+
+# Cross-platform system info
+sysinfo = "0.33"
+
+# eBPF (Linux)
+libbpf-rs = "0.24"
+libbpf-cargo = "0.24"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# UUID
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Config
+directories = "6.0"
+toml = "0.8"
+
+# Regex for signature matching
+regex = "1.11"
+
+# Sync primitives
+parking_lot = "0.12"
+
+# Async streams
+futures-core = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Glob pattern matching
+glob = "0.3"
+
+# Async trait
+async-trait = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
