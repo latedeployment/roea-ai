@@ -36,7 +36,13 @@ Or build from source:
 ```bash
 git clone https://github.com/latedeployment/tuai
 cd tuai
-cargo build --release
+cargo build --release -p tuai
+```
+
+Then run it:
+
+```bash
+cargo run --release -p tuai
 ```
 
 ## Usage
