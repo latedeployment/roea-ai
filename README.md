@@ -1,8 +1,8 @@
 # tuai
 
-**k9s for AI agents** - see what your AI coding tools are doing on your system.
+**[k9s](https://k9scli.io/) for AI agents** - see what your AI coding tools are doing on your system.
 
-tuai is a terminal UI that monitors AI coding agents in real-time. It tracks processes, network connections, and file access - like k9s but for AI agents instead of Kubernetes pods.
+tuai is a terminal UI that monitors AI coding agents in real-time. It tracks processes, network connections, and file access - like [k9s](https://k9scli.io/) but for AI agents instead of Kubernetes pods.
 
 ```
  tuai  2 agents | 847 procs | 14 net | 203 files | 0 alerts            up 00:12:34
