@@ -14,11 +14,11 @@ help:
     @just --list --unsorted
 
 # Build debug
-build:
+build: ebpf-setup
     {{cargo_env}} && cargo build
 
 # Build release
-build-release:
+build-release: ebpf-setup
     {{cargo_env}} && cargo build --release
 
 # Run tuai (TUI mode, default)
