@@ -27,11 +27,7 @@ tuai is a terminal UI that monitors AI coding agents in real-time. It tracks pro
 
 ## Install
 
-```bash
-cargo install tuai
-```
-
-Or build from source:
+Build from source:
 
 ```bash
 git clone https://github.com/latedeployment/tuai
