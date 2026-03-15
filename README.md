@@ -75,7 +75,7 @@ cargo build --release -p tuai
 | Agent detection (Claude Desktop, Cursor, Copilot, etc.) | Works |
 | Process tracking | Works |
 | Network monitoring | Works (via `netstat`) |
-| File access logging | Not yet implemented |
+| File access logging | Works (via handle enumeration) |
 | eBPF | Linux only |
 
 ## Usage

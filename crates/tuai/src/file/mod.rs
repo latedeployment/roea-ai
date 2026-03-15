@@ -4,6 +4,9 @@
 
 mod proc_fd;
 
+#[cfg(target_os = "windows")]
+mod windows_file;
+
 #[cfg(test)]
 mod tests;
 
@@ -14,6 +17,9 @@ use tuai_common::{FileOpInfo, PlatformResult};
 use tokio::sync::broadcast;
 
 pub use proc_fd::ProcFdMonitor;
+
+#[cfg(target_os = "windows")]
+pub use windows_file::WindowsFileMonitor;
 
 /// Paths to filter out from file monitoring (noise reduction)
 const NOISE_PATTERNS: &[&str] = &[
@@ -44,8 +50,15 @@ impl FileMonitorService {
     /// Create a new file monitor service
     pub fn new() -> Self {
         let (event_tx, _) = broadcast::channel(1000);
+
+        #[cfg(target_os = "windows")]
+        let inner: Box<dyn FileMonitorBackend> = Box::new(WindowsFileMonitor::new());
+
+        #[cfg(not(target_os = "windows"))]
+        let inner: Box<dyn FileMonitorBackend> = Box::new(ProcFdMonitor::new());
+
         Self {
-            inner: Box::new(ProcFdMonitor::new()),
+            inner,
             event_tx,
             watched_paths: RwLock::new(HashSet::new()),
             filter_noise: true,
