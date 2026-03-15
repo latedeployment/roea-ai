@@ -23,23 +23,60 @@ tuai is a terminal UI that monitors AI coding agents in real-time. It tracks pro
 - **File access logging** - see which files agents read/write
 - **Protected file alerts** - get alerted when agents access sensitive files (`/etc/shadow`, SSH keys, `.env`, etc.)
 - **eBPF support** - optional kernel-level monitoring on Linux for zero-overhead tracing
-- **Cross-platform** - works on Linux and macOS (sysinfo-based fallback)
+- **Cross-platform** - works on Linux, macOS, and Windows (sysinfo-based process detection)
 
 ## Install
 
-Build from source:
+### Linux / macOS
 
 ```bash
 git clone https://github.com/latedeployment/tuai
 cd tuai
 cargo build --release -p tuai
-```
-
-Then run it:
-
-```bash
 cargo run --release -p tuai
 ```
+
+### Windows
+
+> **Note:** Run tuai as a native Windows binary — not inside WSL — so it can see
+> Windows processes like Claude Desktop, Cursor, and Copilot.
+
+**Prerequisites:**
+
+```powershell
+# Rust with the MSVC toolchain
+winget install Rustlang.Rustup
+rustup default stable-x86_64-pc-windows-msvc
+
+# Visual Studio Build Tools with C++ workload (required by DuckDB bundled)
+winget install Microsoft.VisualStudio.2022.BuildTools
+# During install, select "Desktop development with C++"
+
+# CMake (required by DuckDB bundled)
+winget install Kitware.CMake
+
+# Protocol Buffers compiler (required by tonic-build)
+winget install Google.Protobuf
+```
+
+After installing prerequisites, open a new terminal so the updated `PATH` is picked up, then:
+
+```powershell
+git clone https://github.com/latedeployment/tuai
+cd tuai
+cargo build --release -p tuai
+.\target\release\tuai.exe
+```
+
+**Windows feature support:**
+
+| Feature | Status |
+|---|---|
+| Agent detection (Claude Desktop, Cursor, Copilot, etc.) | Works |
+| Process tracking | Works |
+| Network monitoring | Works (via `netstat`) |
+| File access logging | Not yet implemented |
+| eBPF | Linux only |
 
 ## Usage
 

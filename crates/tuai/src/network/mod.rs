@@ -3,6 +3,9 @@
 //! Tracks TCP/UDP connections and correlates them with processes.
 
 mod proc_net;
+// Always compiled so parse_netstat_output tests run on any platform.
+// Only used as the active backend on Windows (see NetworkMonitorService::new).
+mod windows_net;
 
 #[cfg(test)]
 mod tests;
@@ -15,6 +18,7 @@ use tuai_common::{ConnectionInfo, PlatformResult};
 use tokio::sync::broadcast;
 
 pub use proc_net::ProcNetMonitor;
+pub use windows_net::WindowsNetMonitor;
 
 /// Network monitor service
 pub struct NetworkMonitorService {
@@ -28,8 +32,15 @@ impl NetworkMonitorService {
     /// Create a new network monitor service
     pub fn new() -> Self {
         let (event_tx, _) = broadcast::channel(1000);
+
+        #[cfg(target_os = "windows")]
+        let inner: Box<dyn NetworkMonitorBackend> = Box::new(WindowsNetMonitor::new());
+
+        #[cfg(not(target_os = "windows"))]
+        let inner: Box<dyn NetworkMonitorBackend> = Box::new(ProcNetMonitor::new());
+
         Self {
-            inner: Box::new(ProcNetMonitor::new()),
+            inner,
             event_tx,
             connection_cache: Arc::new(RwLock::new(HashMap::new())),
         }
